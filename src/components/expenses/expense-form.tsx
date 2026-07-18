@@ -65,7 +65,12 @@ export function ExpenseForm({ groupId, members, currency, onSuccess }: Props) {
         }),
       })
       if (!res.ok) {
-        const data = await res.json()
+        const data = (await res.json()) as {
+          error?: string | {
+            formErrors?: string[]
+            fieldErrors?: Record<string, string[]>
+          }
+        }
         const msg =
           typeof data.error === "string"
             ? data.error

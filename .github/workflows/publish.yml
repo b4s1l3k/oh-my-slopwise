@@ -46,6 +46,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
+            type=sha,format=long
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/heads/') && (github.ref_name == 'main' || github.ref_name == 'master') }}
 
       - name: Build and push Docker image
@@ -55,9 +56,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           platforms: linux/amd64
           provenance: true
-          tags: |
-            ${{ steps.meta.outputs.tags }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -44,9 +44,18 @@ async function fetchCbrRates(day: Date): Promise<Record<string, number>> {
   return rates
 }
 
+const RATE_TTL_DAYS = 14
+
+function pruneOldRates() {
+  const cutoff = new Date()
+  cutoff.setUTCDate(cutoff.getUTCDate() - RATE_TTL_DAYS)
+  prisma.exchangeRate.deleteMany({ where: { date: { lt: cutoff } } }).catch(() => {})
+}
+
 /**
  * Курс: сколько рублей стоит 1 единица `currency` на дату `date`.
  * Кэшируется в БД. При недоступности ЦБ используется ближайший известный курс.
+ * Записи старше 14 дней удаляются автоматически при каждой записи новых курсов.
  */
 export async function getRateToRub(currency: string, date: Date): Promise<number> {
   if (currency === BASE_CURRENCY) return 1
@@ -65,6 +74,7 @@ export async function getRateToRub(currency: string, date: Date): Promise<number
       data: Object.entries(rates).map(([cur, rate]) => ({ date: day, currency: cur, rate })),
       skipDuplicates: true,
     })
+    pruneOldRates()
     if (rates[currency] != null) return rates[currency]
     throw new Error("RATE_UNAVAILABLE")
   } catch {

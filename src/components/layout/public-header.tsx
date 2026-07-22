@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { Split } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ThemeToggle } from "@/components/ui/theme-toggle"
 
 interface PublicHeaderProps {
   callbackUrl?: string
@@ -29,6 +30,7 @@ export function PublicHeader({ callbackUrl }: PublicHeaderProps) {
           <Button asChild>
             <Link href={registerHref}>Регистрация</Link>
           </Button>
+          <ThemeToggle />
         </nav>
       </div>
     </header>

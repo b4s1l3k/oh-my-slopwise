@@ -59,7 +59,7 @@ export function CurrencySelect({ value, onChange, recentCurrencies = [], classNa
       <Popover.Portal>
         <Popover.Content
           className={cn(
-            "z-50 w-64 rounded-md border bg-popover shadow-md outline-none",
+            "z-[200] w-64 overflow-hidden rounded-md border bg-popover shadow-md outline-none",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
             "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
@@ -67,6 +67,8 @@ export function CurrencySelect({ value, onChange, recentCurrencies = [], classNa
           )}
           align="start"
           sideOffset={4}
+          onWheel={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
         >
           <div className="flex items-center border-b px-3 py-2 gap-2">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />

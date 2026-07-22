@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react"
 import { parseMoneyInput } from "@/lib/utils/format"
 import { useToast } from "@/components/ui/toast"
 import { CURRENCY_META, isSupportedCurrency } from "@/lib/currencies"
+import { CurrencySelect } from "@/components/ui/currency-select"
 
 type Member = { id: string; name: string; email: string; avatarUrl: string | null }
 type SplitType = "EQUAL" | "EXACT" | "PERCENTAGE"
@@ -179,15 +180,12 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, onS
               step="0.01"
               className="flex-1"
             />
-            <Select value={expenseCurrency} onValueChange={setExpenseCurrency}>
-              <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="RUB">₽ RUB</SelectItem>
-                <SelectItem value="USD">$ USD</SelectItem>
-                <SelectItem value="EUR">€ EUR</SelectItem>
-                <SelectItem value="AMD">֏ AMD</SelectItem>
-              </SelectContent>
-            </Select>
+            <CurrencySelect
+              value={expenseCurrency}
+              onChange={setExpenseCurrency}
+              recentCurrencies={Object.keys(rateBook?.[paidById] ?? {})}
+              triggerClassName="h-10 w-28"
+            />
           </div>
         </div>
         <div className="space-y-2">

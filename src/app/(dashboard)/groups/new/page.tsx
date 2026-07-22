@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, ArrowLeft, Search, X } from "lucide-react"
 import Link from "next/link"
 import { getInitials } from "@/lib/utils/format"
+import { CurrencySelect } from "@/components/ui/currency-select"
 
 type UserResult = { id: string; name: string; email: string; avatarUrl: string | null }
 
@@ -92,15 +93,7 @@ export default function NewGroupPage() {
             </div>
             <div className="space-y-2">
               <Label>Валюта расчёта</Label>
-              <Select value={currency} onValueChange={setCurrency}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="RUB">₽ Рубль</SelectItem>
-                  <SelectItem value="USD">$ Доллар</SelectItem>
-                  <SelectItem value="EUR">€ Евро</SelectItem>
-                  <SelectItem value="AMD">֏ Армянский драм</SelectItem>
-                </SelectContent>
-              </Select>
+              <CurrencySelect value={currency} onChange={setCurrency} />
             </div>
           </div>
         </CardContent>

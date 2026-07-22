@@ -36,10 +36,12 @@ type Props = {
   expense?: EditableExpense // если передан — режим редактирования
   // Последний ручной курс каждого плательщика по валютам: rateBook[userId][currency]
   rateBook?: Record<string, Record<string, number>>
+  // Все валюты каждого плательщика в порядке последнего использования
+  recentByPayer?: Record<string, string[]>
   onSuccess: () => void
 }
 
-export function ExpenseForm({ groupId, members, currency, expense, rateBook, onSuccess }: Props) {
+export function ExpenseForm({ groupId, members, currency, expense, rateBook, recentByPayer, onSuccess }: Props) {
   const { data: session } = useSession()
   const { toast } = useToast()
   const isEdit = !!expense
@@ -183,7 +185,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, onS
             <CurrencySelect
               value={expenseCurrency}
               onChange={setExpenseCurrency}
-              recentCurrencies={Object.keys(rateBook?.[paidById] ?? {})}
+              recentCurrencies={(recentByPayer?.[paidById] ?? []).filter(c => c !== expenseCurrency)}
               triggerClassName="h-10 w-28"
             />
           </div>

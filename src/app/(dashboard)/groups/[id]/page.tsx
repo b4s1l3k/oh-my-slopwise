@@ -182,6 +182,17 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     return book
   }, [expenses])
 
+  // Все валюты каждого плательщика в порядке последнего использования.
+  // Расходы уже отсортированы по дате убыв. → первое вхождение = самое свежее.
+  const recentByPayer = useMemo(() => {
+    const map: Record<string, string[]> = {}
+    for (const e of expenses) {
+      const list = (map[e.paidBy.id] ??= [])
+      if (!list.includes(e.currency)) list.push(e.currency)
+    }
+    return map
+  }, [expenses])
+
   const filteredExpenses = useMemo(() => {
     if (!selectedMemberId) return expenses
     return expenses.filter(
@@ -534,6 +545,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
             members={group.members?.map((m: Member) => m.user) ?? []}
             currency={group.currency}
             rateBook={rateBook}
+            recentByPayer={recentByPayer}
             onSuccess={() => {
               setExpenseOpen(false)
               qc.invalidateQueries({ queryKey: ["expenses", groupId] })
@@ -556,6 +568,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
               groupId={groupId}
               members={group.members?.map((m: Member) => m.user) ?? []}
               currency={group.currency}
+              recentByPayer={recentByPayer}
               expense={{
                 id: editExpense.id,
                 title: editExpense.title,

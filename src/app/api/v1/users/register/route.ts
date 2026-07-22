@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import { z } from "zod"
@@ -35,7 +36,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ user }, { status: 201 })
   } catch (e) {
-    // чаще всего — БД недоступна или не применены миграции
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return NextResponse.json(
+        { error: { message: "Пользователь с таким email уже существует" } },
+        { status: 409 }
+      )
+    }
     console.error("register failed:", e)
     return NextResponse.json(
       { error: { message: "Ошибка сервера. Проверьте подключение к БД и миграции." } },

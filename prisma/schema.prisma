@@ -139,7 +139,7 @@ model Expense {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  group     Group          @relation(fields: [groupId], references: [id])
+  group     Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
   paidBy    User           @relation("ExpensePayer", fields: [paidById], references: [id])
   createdBy User           @relation("ExpenseCreator", fields: [createdById], references: [id])
   splits    ExpenseSplit[]
@@ -187,7 +187,7 @@ model Settlement {
 
   createdAt DateTime @default(now())
 
-  group    Group?   @relation(fields: [groupId], references: [id])
+  group    Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   expense  Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
   fromUser User     @relation("SettlementFrom", fields: [fromUserId], references: [id])
   toUser   User     @relation("SettlementTo", fields: [toUserId], references: [id])

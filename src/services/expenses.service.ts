@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 import { calculateSplits } from "@/lib/utils/split-calculator"
 import { getRateToRub } from "@/services/exchange.service"
 import type { CreateExpenseInput } from "@/lib/validations/expense"
@@ -122,6 +123,18 @@ export async function createExpense(
   const splitRows = buildSplitRows(data, factor)
 
   return prisma.$transaction(async (tx) => {
+    // Re-validate membership inside the transaction (A4 race guard)
+    const txGroup = await tx.group.findUnique({
+      where: { id: groupId },
+      include: { members: { where: { isActive: true }, select: { userId: true } } },
+    })
+    if (!txGroup) throw new Error("NOT_FOUND")
+    const txIds = new Set(txGroup.members.map((m) => m.userId))
+    if (!txIds.has(userId)) throw new Error("FORBIDDEN")
+    if (!txIds.has(data.paidById)) throw new Error("PAYER_NOT_MEMBER")
+    for (const s of data.splits) if (!txIds.has(s.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
+    for (const cp of data.cashPayments ?? []) if (!txIds.has(cp.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
+
     const expense = await tx.expense.create({
       data: {
         groupId,
@@ -187,7 +200,7 @@ export async function createExpense(
 
     await tx.group.update({ where: { id: groupId }, data: { updatedAt: new Date() } })
     return expense
-  })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 export async function updateExpense(
@@ -226,6 +239,16 @@ export async function updateExpense(
   if ((existing.customRate ?? null) !== (customRate ?? null)) changes.push("курс")
 
   return prisma.$transaction(async (tx) => {
+    // Re-validate membership inside the transaction (A4 race guard)
+    const txGroup = await tx.group.findUnique({
+      where: { id: existing.groupId },
+      include: { members: { where: { isActive: true }, select: { userId: true } } },
+    })
+    if (!txGroup) throw new Error("NOT_FOUND")
+    const txIds = new Set(txGroup.members.map((m) => m.userId))
+    if (!txIds.has(data.paidById)) throw new Error("PAYER_NOT_MEMBER")
+    for (const s of data.splits) if (!txIds.has(s.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
+
     // полностью пересобираем split-строки
     await tx.expenseSplit.deleteMany({ where: { expenseId } })
     const expense = await tx.expense.update({
@@ -262,7 +285,7 @@ export async function updateExpense(
       },
     })
     return expense
-  })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 export async function deleteExpense(expenseId: string, userId: string) {

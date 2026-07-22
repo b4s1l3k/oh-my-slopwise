@@ -1,14 +1,16 @@
 import { prisma } from "@/lib/db"
 import { calculateSimplifiedDebts } from "@/lib/utils/balance-calculator"
 
+type DbClient = Pick<typeof prisma, "expense" | "settlement" | "groupMember">
+
 // Считает упрощённые долги группы В ВАЛЮТЕ РАСЧЁТА группы.
 // Траты могут быть в разных валютах, поэтому берём amountBase (уже пересчитано
 // в валюту расчёта на дату операции). Имена — по ВСЕМ участникам (в т.ч. вышедшим).
-export async function computeGroupDebts(groupId: string) {
+export async function computeGroupDebts(groupId: string, db: DbClient = prisma) {
   const [expenses, settlements, members] = await Promise.all([
-    prisma.expense.findMany({ where: { groupId }, include: { splits: true } }),
-    prisma.settlement.findMany({ where: { groupId } }),
-    prisma.groupMember.findMany({
+    db.expense.findMany({ where: { groupId }, include: { splits: true } }),
+    db.settlement.findMany({ where: { groupId } }),
+    db.groupMember.findMany({
       where: { groupId },
       include: { user: { select: { id: true, name: true } } },
     }),
@@ -39,9 +41,10 @@ export async function getGroupBalances(groupId: string, userId: string) {
 export async function getOutstandingDebt(
   groupId: string,
   fromUserId: string,
-  toUserId: string
+  toUserId: string,
+  db: DbClient = prisma
 ): Promise<number> {
-  const { simplified } = await computeGroupDebts(groupId)
+  const { simplified } = await computeGroupDebts(groupId, db)
   const debt = simplified.find(
     (d) => d.fromUserId === fromUserId && d.toUserId === toUserId
   )

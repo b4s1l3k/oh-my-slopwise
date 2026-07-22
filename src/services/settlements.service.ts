@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 import { getOutstandingDebt } from "@/services/balances.service"
 import type { CreateSettlementInput } from "@/lib/validations/settlement"
 
@@ -18,12 +19,12 @@ export async function createSettlement(
   if (!memberIds.has(userId)) throw new Error("FORBIDDEN")
   if (!memberIds.has(data.toUserId)) throw new Error("RECIPIENT_NOT_MEMBER")
 
-  // Нельзя погасить больше, чем реально должен
-  const outstanding = await getOutstandingDebt(data.groupId, userId, data.toUserId)
-  if (outstanding <= 0) throw new Error("NO_DEBT")
-  if (data.amount > outstanding) throw new Error("AMOUNT_EXCEEDS_DEBT")
-
   return prisma.$transaction(async (tx) => {
+    // Debt check inside the transaction prevents A1 race (two concurrent settlements exceeding debt)
+    const outstanding = await getOutstandingDebt(data.groupId, userId, data.toUserId, tx)
+    if (outstanding <= 0) throw new Error("NO_DEBT")
+    if (data.amount > outstanding) throw new Error("AMOUNT_EXCEEDS_DEBT")
+
     const settlement = await tx.settlement.create({
       data: {
         groupId: data.groupId,
@@ -53,7 +54,7 @@ export async function createSettlement(
     })
 
     return settlement
-  })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 // Сброс всех зафиксированных расчётов группы (только админ).
@@ -64,7 +65,7 @@ export async function resetSettlements(groupId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
   })
-  if (!member || member.role !== "ADMIN") throw new Error("FORBIDDEN")
+  if (!member?.isActive || member.role !== "ADMIN") throw new Error("FORBIDDEN")
 
   return prisma.$transaction(async (tx) => {
     const { count } = await tx.settlement.deleteMany({ where: { groupId } })

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 import { computeGroupDebts } from "@/services/balances.service"
 import type { CreateGroupInput, UpdateGroupInput } from "@/lib/validations/group"
 
@@ -95,17 +96,16 @@ export async function updateGroup(
 export async function deleteGroup(groupId: string, userId: string) {
   await assertAdmin(groupId, userId)
 
-  // Нельзя удалять группу с незакрытыми долгами
-  const { raw } = await computeGroupDebts(groupId)
-  if (raw.some((b) => b.balance !== 0)) throw new Error("GROUP_HAS_BALANCES")
+  await prisma.$transaction(async (tx) => {
+    // Balance check inside the transaction prevents A3 race
+    const { raw } = await computeGroupDebts(groupId, tx)
+    if (raw.some((b) => b.balance !== 0)) throw new Error("GROUP_HAS_BALANCES")
 
-  // Явно чистим зависимые записи (expenses/settlements не каскадятся при удалении группы)
-  await prisma.$transaction([
-    prisma.activityLog.deleteMany({ where: { groupId } }),
-    prisma.settlement.deleteMany({ where: { groupId } }),
-    prisma.expense.deleteMany({ where: { groupId } }), // splits каскадом
-    prisma.group.delete({ where: { id: groupId } }), // members каскадом
-  ])
+    await tx.activityLog.deleteMany({ where: { groupId } })
+    await tx.settlement.deleteMany({ where: { groupId } })
+    await tx.expense.deleteMany({ where: { groupId } })
+    await tx.group.delete({ where: { id: groupId } })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 export async function addMember(groupId: string, adminId: string, memberId: string) {
@@ -139,17 +139,17 @@ export async function removeMember(groupId: string, adminId: string, memberId: s
   // выйти может сам участник; удалить другого — только админ
   if (adminId !== memberId) await assertAdmin(groupId, adminId)
 
-  // Нельзя убирать участника с ненулевым балансом
-  const { raw } = await computeGroupDebts(groupId)
-  const balance = raw.find((b) => b.userId === memberId)?.balance ?? 0
-  if (balance !== 0) throw new Error("MEMBER_HAS_BALANCE")
-
   const user = await prisma.user.findUnique({
     where: { id: memberId },
     select: { name: true },
   })
 
   return prisma.$transaction(async (tx) => {
+    // Balance check inside the transaction prevents A2 race
+    const { raw } = await computeGroupDebts(groupId, tx)
+    const balance = raw.find((b) => b.userId === memberId)?.balance ?? 0
+    if (balance !== 0) throw new Error("MEMBER_HAS_BALANCE")
+
     const member = await tx.groupMember.update({
       where: { groupId_userId: { groupId, userId: memberId } },
       data: { isActive: false },
@@ -161,12 +161,11 @@ export async function removeMember(groupId: string, adminId: string, memberId: s
         type: "MEMBER_REMOVED",
         entityType: "member",
         entityId: memberId,
-        // selfLeft — сам вышел; иначе удалён админом
         metadata: { memberName: user?.name, selfLeft: adminId === memberId },
       },
     })
     return member
-  })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 async function assertAdmin(groupId: string, userId: string) {

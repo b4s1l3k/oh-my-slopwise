@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/components/ui/toast"
 import { ArrowLeft, Plus, Trash2, ArrowRight, CheckCircle, Settings, Pencil, RefreshCw, Loader2, ChevronDown, ChevronUp } from "lucide-react"
+import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { ExpenseForm } from "@/components/expenses/expense-form"
 import { SettlementForm } from "@/components/balances/settlement-form"
@@ -81,6 +82,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   const [editExpense, setEditExpense] = useState<Expense | null>(null)
   const [settlementDebt, setSettlementDebt] = useState<Debt | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
   const toggleExpanded = (id: string) =>
     setExpandedIds((prev) => {
       const next = new Set(prev)
@@ -177,6 +179,15 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     return book
   }, [expenses])
 
+  const filteredExpenses = useMemo(() => {
+    if (!selectedMemberId) return expenses
+    return expenses.filter(
+      (e) =>
+        e.paidBy.id === selectedMemberId ||
+        e.splits.some((s) => s.user.id === selectedMemberId)
+    )
+  }, [expenses, selectedMemberId])
+
   if (loadingGroup) {
     return (
       <div className="space-y-4">
@@ -222,15 +233,37 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
-            {group.members?.map((m: Member) => (
-              <div key={m.userId} className="flex items-center gap-2 rounded-full border px-3 py-1">
-                <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
-                  {getInitials(m.user.name)}
+            {group.members?.map((m: Member) => {
+              const active = selectedMemberId === m.userId
+              return (
+                <div
+                  key={m.userId}
+                  onClick={() => setSelectedMemberId(active ? null : m.userId)}
+                  className={cn(
+                    "flex items-center gap-2 rounded-full px-3 py-1 cursor-pointer transition-colors select-none",
+                    active
+                      ? "bg-primary text-primary-foreground"
+                      : "border hover:bg-accent"
+                  )}
+                >
+                  <div className={cn(
+                    "w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium",
+                    active ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary"
+                  )}>
+                    {getInitials(m.user.name)}
+                  </div>
+                  <span className="text-sm">{m.user.name}</span>
+                  {m.role === "ADMIN" && (
+                    <Badge
+                      variant={active ? "outline" : "secondary"}
+                      className="text-xs py-0"
+                    >
+                      admin
+                    </Badge>
+                  )}
                 </div>
-                <span className="text-sm">{m.user.name}</span>
-                {m.role === "ADMIN" && <Badge variant="secondary" className="text-xs py-0">admin</Badge>}
-              </div>
-            ))}
+              )
+            })}
           </div>
         </CardContent>
       </Card>
@@ -307,7 +340,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       {/* Расходы */}
       <div>
         <h2 className="text-lg font-semibold mb-3">
-          Расходы ({expenses.length})
+          Расходы ({selectedMemberId ? `${filteredExpenses.length} из ${expenses.length}` : expenses.length})
         </h2>
         {loadingExpenses ? (
           <div className="space-y-2">
@@ -325,7 +358,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
           </Card>
         ) : (
           <div className="space-y-2">
-            {expenses.map((expense) => {
+            {filteredExpenses.map((expense) => {
               const myShare = expense.splits.find((s) => s.user.id === myUserId)?.amount
               const iMePaid = expense.paidBy.id === myUserId
               const expanded = expandedIds.has(expense.id)

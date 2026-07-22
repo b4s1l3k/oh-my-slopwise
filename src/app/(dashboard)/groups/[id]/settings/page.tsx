@@ -227,14 +227,14 @@ export default function GroupSettingsPage({ params }: { params: Promise<{ id: st
         <h1 className="text-2xl font-bold">Настройки группы</h1>
       </div>
 
-      {/* Название */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Название</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input value={name} onChange={(e) => setName(e.target.value)} disabled={!isAdmin} />
-          {isAdmin && (
+      {/* Название — только для админа */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Название</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
             <Button
               size="sm"
               disabled={!name.trim() || name === group.name || rename.isPending}
@@ -243,9 +243,9 @@ export default function GroupSettingsPage({ params }: { params: Promise<{ id: st
               {rename.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Сохранить
             </Button>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Участники */}
       <Card>
@@ -325,29 +325,30 @@ export default function GroupSettingsPage({ params }: { params: Promise<{ id: st
       </Card>
 
       {/* Приглашение по ссылке */}
-      {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Пригласить по ссылке</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              По ссылке может вступить несколько человек. Отзыв делает старую ссылку недействительной.
-            </p>
-            {inviteUrl ? (
-              <>
-                <div className="flex gap-2">
-                  <Input readOnly value={inviteUrl} onFocus={(e) => e.currentTarget.select()} />
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(inviteUrl)
-                      toast({ title: "Ссылка скопирована" })
-                    }}
-                  >
-                    Копировать
-                  </Button>
-                </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Пригласить по ссылке</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            По ссылке может вступить несколько человек.
+            {isAdmin && " Отзыв делает старую ссылку недействительной."}
+          </p>
+          {inviteUrl ? (
+            <>
+              <div className="flex gap-2">
+                <Input readOnly value={inviteUrl} onFocus={(e) => e.currentTarget.select()} />
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(inviteUrl)
+                    toast({ title: "Ссылка скопирована" })
+                  }}
+                >
+                  Копировать
+                </Button>
+              </div>
+              {isAdmin && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -357,16 +358,16 @@ export default function GroupSettingsPage({ params }: { params: Promise<{ id: st
                 >
                   Отозвать ссылку
                 </Button>
-              </>
-            ) : (
-              <Button size="sm" onClick={() => createInvite.mutate()} disabled={createInvite.isPending}>
-                {createInvite.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Создать ссылку
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
+              )}
+            </>
+          ) : (
+            <Button size="sm" onClick={() => createInvite.mutate()} disabled={createInvite.isPending}>
+              {createInvite.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Создать ссылку
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Реквизиты для этой поездки */}
       <Card>

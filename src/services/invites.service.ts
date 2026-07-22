@@ -1,6 +1,13 @@
 import { prisma } from "@/lib/db"
 import { randomUUID } from "crypto"
 
+async function assertMember(groupId: string, userId: string) {
+  const member = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+  })
+  if (!member?.isActive) throw new Error("FORBIDDEN")
+}
+
 async function assertAdmin(groupId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
@@ -8,16 +15,18 @@ async function assertAdmin(groupId: string, userId: string) {
   if (!member || member.role !== "ADMIN") throw new Error("FORBIDDEN")
 }
 
-// Возвращает активную ссылку поездки (создаёт, если нет)
+// Возвращает активную ссылку группы (создаёт, если нет) — доступно всем участникам
 export async function getOrCreateInvite(groupId: string, userId: string) {
-  await assertAdmin(groupId, userId)
-  const existing = await prisma.groupInvite.findFirst({
-    where: { groupId, revoked: false },
-    orderBy: { createdAt: "desc" },
-  })
-  if (existing) return existing
-  return prisma.groupInvite.create({
-    data: { token: randomUUID().replace(/-/g, ""), groupId, createdById: userId },
+  await assertMember(groupId, userId)
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.groupInvite.findFirst({
+      where: { groupId, revoked: false },
+      orderBy: { createdAt: "desc" },
+    })
+    if (existing) return existing
+    return tx.groupInvite.create({
+      data: { token: randomUUID().replace(/-/g, ""), groupId, createdById: userId },
+    })
   })
 }
 
@@ -31,7 +40,7 @@ export async function revokeInvite(groupId: string, userId: string) {
 }
 
 // Инфо о приглашении по токену (для страницы вступления)
-export async function getInviteInfo(token: string) {
+export async function getInviteInfo(token: string, userId: string) {
   const invite = await prisma.groupInvite.findUnique({
     where: { token },
     include: {
@@ -41,27 +50,31 @@ export async function getInviteInfo(token: string) {
     },
   })
   if (!invite || invite.revoked) return null
+  const membership = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId: invite.groupId, userId } },
+  })
   return {
     groupId: invite.groupId,
     groupName: invite.group.name,
     memberCount: invite.group._count.members,
+    isAlreadyMember: membership?.isActive === true,
   }
 }
 
-// Вступление в поездку по токену
+// Вступление в группу по токену
 export async function acceptInvite(token: string, userId: string) {
-  const invite = await prisma.groupInvite.findUnique({ where: { token } })
-  if (!invite || invite.revoked) throw new Error("INVITE_INVALID")
+  return prisma.$transaction(async (tx) => {
+    const invite = await tx.groupInvite.findUnique({ where: { token } })
+    if (!invite || invite.revoked) throw new Error("INVITE_INVALID")
 
-  const existing = await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId: invite.groupId, userId } },
-  })
-  // Уже активный участник — ничего не меняем и не засоряем историю
-  if (existing?.isActive) return { groupId: invite.groupId }
+    const existing = await tx.groupMember.findUnique({
+      where: { groupId_userId: { groupId: invite.groupId, userId } },
+    })
+    // Уже активный участник — ничего не меняем и не засоряем историю
+    if (existing?.isActive) return { groupId: invite.groupId }
 
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
+    const user = await tx.user.findUnique({ where: { id: userId }, select: { name: true } })
 
-  await prisma.$transaction(async (tx) => {
     await tx.groupMember.upsert({
       where: { groupId_userId: { groupId: invite.groupId, userId } },
       create: { groupId: invite.groupId, userId, role: "MEMBER" },
@@ -77,6 +90,6 @@ export async function acceptInvite(token: string, userId: string) {
         metadata: { memberName: user?.name, viaInvite: true },
       },
     })
+    return { groupId: invite.groupId }
   })
-  return { groupId: invite.groupId }
 }

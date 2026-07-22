@@ -9,7 +9,7 @@ export async function GET(_req: Request, { params }: Params) {
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { token } = await params
-  const info = await invites.getInviteInfo(token)
+  const info = await invites.getInviteInfo(token, session.user.id)
   if (!info) return NextResponse.json({ error: "Приглашение недействительно" }, { status: 404 })
   return NextResponse.json({ invite: info })
 }

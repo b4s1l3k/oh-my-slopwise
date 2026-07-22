@@ -17,7 +17,7 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
       const res = await fetch(`/api/v1/invites/${token}`)
       if (!res.ok) throw new Error("Приглашение недействительно")
       const json = await res.json()
-      return json.invite as { groupId: string; groupName: string; memberCount: number }
+      return json.invite as { groupId: string; groupName: string; memberCount: number; isAlreadyMember: boolean }
     },
     retry: false,
   })
@@ -41,8 +41,12 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
               <Split className="h-6 w-6 text-primary-foreground" />
             </div>
           </div>
-          <CardTitle>Приглашение в поездку</CardTitle>
-          {data && <CardDescription>Вас пригласили присоединиться</CardDescription>}
+          <CardTitle>Приглашение в группу</CardTitle>
+          {data && (
+            <CardDescription>
+              {data.isAlreadyMember ? "Вы уже участник этой группы" : "Вас пригласили присоединиться"}
+            </CardDescription>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           {isLoading ? (
@@ -69,14 +73,20 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
                 </p>
               </div>
               {error && <p className="text-sm text-destructive text-center">{error}</p>}
-              <Button
-                className="w-full"
-                onClick={() => accept.mutate()}
-                disabled={accept.isPending}
-              >
-                {accept.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Присоединиться
-              </Button>
+              {data.isAlreadyMember ? (
+                <Button className="w-full" onClick={() => router.push(`/groups/${data.groupId}`)}>
+                  Перейти в группу
+                </Button>
+              ) : (
+                <Button
+                  className="w-full"
+                  onClick={() => accept.mutate()}
+                  disabled={accept.isPending}
+                >
+                  {accept.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Присоединиться
+                </Button>
+              )}
             </>
           )}
         </CardContent>

@@ -7,7 +7,7 @@ export default auth(function middleware(req) {
 
   const authPaths = ["/login", "/register"]
   const isAuthPath = authPaths.some((p) => pathname.startsWith(p))
-  const isPublic = isAuthPath || pathname === "/faq"
+  const isPublic = isAuthPath || pathname === "/" || pathname === "/faq"
   const isApi = pathname.startsWith("/api")
 
   if (isApi) return NextResponse.next()

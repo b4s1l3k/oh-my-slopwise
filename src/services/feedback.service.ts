@@ -9,6 +9,7 @@ export async function createFeedback(userId: string, message: string) {
 export async function listFeedback() {
   return prisma.feedback.findMany({
     orderBy: { createdAt: "desc" },
+    take: 100,
     include: { user: { select: { name: true, email: true } } },
   })
 }

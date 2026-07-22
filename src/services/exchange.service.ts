@@ -15,10 +15,16 @@ function cbrDateParam(d: Date): string {
 // Забирает у ЦБ РФ курсы всех валют на день. Возвращает "рублей за 1 единицу".
 async function fetchCbrRates(day: Date): Promise<Record<string, number>> {
   const url = `https://www.cbr.ru/scripts/XML_daily.asp?date_req=${cbrDateParam(day)}`
+  const today = toDay(new Date())
+  // Курсы прошлых дат никогда не меняются — кэшируем навсегда.
+  // Курс текущего дня может ещё не выйти или обновиться — не кэшируем.
+  const isHistorical = day.getTime() < today.getTime()
+
   const res = await fetch(url, {
     headers: { "User-Agent": "SLOPwise-personal" },
-    // курсы за прошлые даты не меняются — можно кэшировать на уровне fetch
-    cache: "no-store",
+    cache: isHistorical ? "force-cache" : "no-store",
+    // 5-секундный таймаут — CBR иногда тормозит, не хотим вешать весь запрос
+    signal: AbortSignal.timeout(5000),
   })
   if (!res.ok) throw new Error("CBR_FETCH_FAILED")
 
@@ -54,20 +60,16 @@ export async function getRateToRub(currency: string, date: Date): Promise<number
 
   try {
     const rates = await fetchCbrRates(day)
-    // сохраняем в кэш все валюты за этот день — меньше обращений к ЦБ
-    await prisma.$transaction(
-      Object.entries(rates).map(([cur, rate]) =>
-        prisma.exchangeRate.upsert({
-          where: { date_currency: { date: day, currency: cur } },
-          create: { date: day, currency: cur, rate },
-          update: { rate },
-        })
-      )
-    )
+    // Один batch INSERT вместо 34 отдельных upsert — меньше lock contention
+    await prisma.exchangeRate.createMany({
+      data: Object.entries(rates).map(([cur, rate]) => ({ date: day, currency: cur, rate })),
+      skipDuplicates: true,
+    })
     if (rates[currency] != null) return rates[currency]
     throw new Error("RATE_UNAVAILABLE")
   } catch {
     // fallback: ближайший известный курс этой валюты
+    // Индекс [currency, date DESC] покрывает этот запрос
     const nearest = await prisma.exchangeRate.findFirst({
       where: { currency },
       orderBy: { date: "desc" },

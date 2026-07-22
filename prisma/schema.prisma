@@ -113,6 +113,7 @@ model GroupMember {
   user  User  @relation(fields: [userId], references: [id])
 
   @@unique([groupId, userId])
+  @@index([userId, isActive])
   @@map("group_members")
 }
 
@@ -146,7 +147,7 @@ model Expense {
   // Расчёты наличными, сделанные в момент этой траты
   settlements Settlement[]
 
-  @@index([groupId])
+  @@index([groupId, date(sort: Desc)])
   @@index([paidById])
   @@map("expenses")
 }
@@ -192,7 +193,7 @@ model Settlement {
   fromUser User     @relation("SettlementFrom", fields: [fromUserId], references: [id])
   toUser   User     @relation("SettlementTo", fields: [toUserId], references: [id])
 
-  @@index([groupId])
+  @@index([groupId, date(sort: Desc)])
   @@index([expenseId])
   @@index([fromUserId, toUserId])
   @@map("settlements")
@@ -252,5 +253,6 @@ model ExchangeRate {
   createdAt DateTime @default(now())
 
   @@unique([date, currency])
+  @@index([currency, date(sort: Desc)])
   @@map("exchange_rates")
 }

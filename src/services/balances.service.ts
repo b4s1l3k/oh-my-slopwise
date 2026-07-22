@@ -8,11 +8,20 @@ type DbClient = Pick<typeof prisma, "expense" | "settlement" | "groupMember">
 // в валюту расчёта на дату операции). Имена — по ВСЕМ участникам (в т.ч. вышедшим).
 export async function computeGroupDebts(groupId: string, db: DbClient = prisma) {
   const [expenses, settlements, members] = await Promise.all([
-    db.expense.findMany({ where: { groupId }, include: { splits: true } }),
-    db.settlement.findMany({ where: { groupId } }),
+    db.expense.findMany({
+      where: { groupId },
+      select: {
+        paidById: true,
+        splits: { select: { userId: true, amount: true, amountBase: true } },
+      },
+    }),
+    db.settlement.findMany({
+      where: { groupId },
+      select: { fromUserId: true, toUserId: true, amount: true, amountBase: true },
+    }),
     db.groupMember.findMany({
       where: { groupId },
-      include: { user: { select: { id: true, name: true } } },
+      select: { userId: true, user: { select: { id: true, name: true } } },
     }),
   ])
 
@@ -65,13 +74,22 @@ export type CurrencyTotal = { currency: string; owed: number; owe: number }
 export async function getOverviewBalances(userId: string) {
   const memberships = await prisma.groupMember.findMany({
     where: { userId, isActive: true },
-    include: {
+    select: {
       group: {
-        include: {
-          expenses: { include: { splits: true } },
-          settlements: true,
+        select: {
+          name: true,
+          currency: true,
+          expenses: {
+            select: {
+              paidById: true,
+              splits: { select: { userId: true, amount: true, amountBase: true } },
+            },
+          },
+          settlements: {
+            select: { fromUserId: true, toUserId: true, amount: true, amountBase: true },
+          },
           members: {
-            include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+            select: { userId: true, user: { select: { id: true, name: true, avatarUrl: true } } },
           },
         },
       },

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { ExpenseForm } from "@/components/expenses/expense-form"
 import { SettlementForm } from "@/components/balances/settlement-form"
+import { RequisitesNudgeDialog } from "@/components/profile/requisites-nudge-dialog"
 
 type Requisites = { payeeName: string | null; bankName: string | null; payeeAccount: string | null }
 type Member = {
@@ -83,6 +84,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   const [settlementDebt, setSettlementDebt] = useState<Debt | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  const [requisitesNudge, setRequisitesNudge] = useState(false)
   const toggleExpanded = (id: string) =>
     setExpandedIds((prev) => {
       const next = new Set(prev)
@@ -112,6 +114,15 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     queryKey: ["balances", groupId],
     queryFn: async () => {
       const res = await fetch(`/api/v1/groups/${groupId}/balances`)
+      if (!res.ok) throw new Error("Failed")
+      return res.json()
+    },
+  })
+
+  const { data: profileData } = useQuery({
+    queryKey: ["profile"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/users/me")
       if (!res.ok) throw new Error("Failed")
       return res.json()
     },
@@ -531,12 +542,15 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
             members={group.members?.map((m: Member) => m.user) ?? []}
             currency={group.currency}
             rateBook={rateBook}
-            onSuccess={() => {
+            onSuccess={(paidById) => {
               setExpenseOpen(false)
               qc.invalidateQueries({ queryKey: ["expenses", groupId] })
               qc.invalidateQueries({ queryKey: ["balances", groupId] })
               qc.invalidateQueries({ queryKey: ["overview"] })
               toast({ title: "Расход добавлен" })
+              const profile = profileData?.user
+              const hasRequisites = profile?.payeeName || profile?.bankName || profile?.payeeAccount
+              if (paidById === myUserId && !hasRequisites) setRequisitesNudge(true)
             }}
           />
         </DialogContent>
@@ -581,6 +595,12 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Диалог: предложение добавить реквизиты */}
+      <RequisitesNudgeDialog
+        open={requisitesNudge}
+        onClose={() => setRequisitesNudge(false)}
+      />
 
       {/* Диалог: расчёт */}
       {settlementDebt && (

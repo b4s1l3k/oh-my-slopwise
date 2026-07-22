@@ -41,6 +41,7 @@ export function RequisitesNudgeDialog({ open, groupId, onClose }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["profile"] })
+      qc.invalidateQueries({ queryKey: ["group", groupId] })
       toast({ title: "Реквизиты сохранены в профиле" })
       onClose()
     },

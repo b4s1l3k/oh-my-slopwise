@@ -1,5 +1,5 @@
 "use client"
-import { use, useState } from "react"
+import { use, useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
@@ -48,23 +48,28 @@ export default function GroupSettingsPage({ params }: { params: Promise<{ id: st
   const [reqBank, setReqBank] = useState("")
   const [reqAccount, setReqAccount] = useState("")
   const [inviteUrl, setInviteUrl] = useState("")
+  const initialised = useRef(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ["group", groupId],
     queryFn: async () => {
       const res = await fetch(`/api/v1/groups/${groupId}`)
       if (!res.ok) throw new Error("Not found")
-      const json = await res.json()
-      setName(json.group.name)
-      const me = json.group.members.find((m: Member) => m.userId === session?.user?.id)
-      if (me) {
-        setReqName(me.payeeName ?? "")
-        setReqBank(me.bankName ?? "")
-        setReqAccount(me.payeeAccount ?? "")
-      }
-      return json
+      return res.json()
     },
   })
+
+  useEffect(() => {
+    if (!data || !myId || initialised.current) return
+    setName(data.group.name)
+    const me = data.group.members.find((m: Member) => m.userId === myId)
+    if (me) {
+      setReqName(me.payeeName ?? "")
+      setReqBank(me.bankName ?? "")
+      setReqAccount(me.payeeAccount ?? "")
+    }
+    initialised.current = true
+  }, [data, myId])
 
   const group = data?.group
   const members: Member[] = group?.members ?? []

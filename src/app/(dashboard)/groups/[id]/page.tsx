@@ -83,8 +83,9 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     })
 
   const handleOpenExpense = () => {
-    const profile = profileData?.user
-    const hasRequisites = profile?.payeeName || profile?.bankName || profile?.payeeAccount
+    if (!group || !myUserId) { setExpenseOpen(true); return }
+    const eff = effectiveRequisites(group.members, myUserId)
+    const hasRequisites = eff.payeeName || eff.bankName || eff.payeeAccount
     if (!hasRequisites) {
       setRequisitesNudge(true)
     } else {
@@ -114,15 +115,6 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     queryKey: ["balances", groupId],
     queryFn: async () => {
       const res = await fetch(`/api/v1/groups/${groupId}/balances`)
-      if (!res.ok) throw new Error("Failed")
-      return res.json()
-    },
-  })
-
-  const { data: profileData } = useQuery({
-    queryKey: ["profile"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/users/me")
       if (!res.ok) throw new Error("Failed")
       return res.json()
     },

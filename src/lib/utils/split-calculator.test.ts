@@ -38,15 +38,6 @@ describe("calculateSplits", () => {
     expect(r.find((x) => x.userId === "b")!.amount).toBe(70000)
   })
 
-  it("SHARES делит пропорционально долям и сходится", () => {
-    const r = calculateSplits(100000, "SHARES", [
-      { userId: "a", shares: 1 },
-      { userId: "b", shares: 3 },
-    ])
-    expect(r.reduce((s, x) => s + x.amount, 0)).toBe(100000)
-    expect(r.find((x) => x.userId === "b")!.amount).toBe(75000)
-  })
-
   it("пустой список участников → пусто", () => {
     expect(calculateSplits(1000, "EQUAL", [])).toEqual([])
   })

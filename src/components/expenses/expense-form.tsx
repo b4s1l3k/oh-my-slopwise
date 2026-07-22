@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/toast"
 import { CURRENCY_META, isSupportedCurrency } from "@/lib/currencies"
 
 type Member = { id: string; name: string; email: string; avatarUrl: string | null }
-type SplitType = "EQUAL" | "EXACT" | "PERCENTAGE" | "SHARES"
+type SplitType = "EQUAL" | "EXACT" | "PERCENTAGE"
 
 // Данные для режима редактирования
 export type EditableExpense = {
@@ -75,12 +75,6 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, onS
   const [cashPayments, setCashPayments] = useState<Record<string, string>>({})
   const [showCashSection, setShowCashSection] = useState(false)
 
-  const [shares, setShares] = useState<Record<string, string>>(
-    expense
-      ? Object.fromEntries(expense.splits.map((s) => [s.userId, String(s.share ?? 1)]))
-      : Object.fromEntries(members.map((m) => [m.id, "1"]))
-  )
-
   useEffect(() => {
     // автоподстановка плательщика только при создании
     if (!isEdit && session?.user?.id) setPaidById(session.user.id)
@@ -102,7 +96,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, onS
       if (!title.trim()) throw new Error("Укажите название")
       if (selectedIds.length === 0) throw new Error("Выберите хотя бы одного участника")
 
-      const splits = buildSplits(splitType, selectedIds, amount, exactAmounts, percentages, shares)
+      const splits = buildSplits(splitType, selectedIds, amount, exactAmounts, percentages)
 
       // Ручной курс учитываем только если валюта траты ≠ валюте расчёта.
       const parsedRate = parseFloat(rateStr.replace(",", "."))
@@ -250,8 +244,8 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, onS
 
       <div className="space-y-2">
         <Label>Способ разбивки</Label>
-        <div className="grid grid-cols-4 gap-1">
-          {(["EQUAL", "EXACT", "PERCENTAGE", "SHARES"] as SplitType[]).map((t) => (
+        <div className="grid grid-cols-3 gap-1">
+          {(["EQUAL", "EXACT", "PERCENTAGE"] as SplitType[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -314,20 +308,6 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, onS
                       inputMode="decimal"
                     />
                     <span className="text-sm text-muted-foreground">%</span>
-                  </div>
-                )}
-                {selected && splitType === "SHARES" && (
-                  <div className="flex items-center gap-1">
-                    <Input
-                      type="number"
-                      className="w-20 h-8 text-sm"
-                      placeholder="1"
-                      value={shares[m.id] ?? "1"}
-                      onChange={(e) => setShares((prev) => ({ ...prev, [m.id]: e.target.value }))}
-                      inputMode="numeric"
-                      min="1"
-                    />
-                    <span className="text-sm text-muted-foreground">доля</span>
                   </div>
                 )}
               </div>
@@ -395,7 +375,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, onS
 }
 
 function splitTypeLabel(t: SplitType) {
-  return { EQUAL: "Поровну", EXACT: "Суммы", PERCENTAGE: "Проценты", SHARES: "Доли" }[t]
+  return { EQUAL: "Поровну", EXACT: "Суммы", PERCENTAGE: "Проценты" }[t]
 }
 
 function buildSplits(
@@ -403,8 +383,7 @@ function buildSplits(
   ids: string[],
   totalAmount: number,
   exact: Record<string, string>,
-  pct: Record<string, string>,
-  sh: Record<string, string>
+  pct: Record<string, string>
 ) {
   switch (type) {
     case "EQUAL":
@@ -416,7 +395,5 @@ function buildSplits(
         userId: id,
         percentage: Math.round(parseFloat(pct[id] ?? "0") * 100),
       }))
-    case "SHARES":
-      return ids.map((id) => ({ userId: id, shares: parseInt(sh[id] ?? "1") || 1 }))
   }
 }

@@ -5,7 +5,6 @@ const splitParticipant = z.object({
   userId: z.string().min(1),
   amount: z.number().int().optional(),
   percentage: z.number().int().optional(),
-  shares: z.number().int().optional(),
 })
 
 export const createExpenseSchema = z
@@ -24,7 +23,7 @@ export const createExpenseSchema = z
     date: z.string(),
     paidById: z.string().min(1, "Укажите плательщика"),
     notes: z.string().max(1000).optional(),
-    splitType: z.enum(["EQUAL", "EXACT", "PERCENTAGE", "SHARES"]),
+    splitType: z.enum(["EQUAL", "EXACT", "PERCENTAGE"]),
     splits: z.array(splitParticipant).min(1, "Нужен хотя бы один участник"),
     // Наличные, которые участники вернули плательщику на месте (атомарно создаются расчёты)
     cashPayments: z
@@ -100,17 +99,6 @@ export const createExpenseSchema = z
       }
     }
 
-    if (data.splitType === "SHARES") {
-      data.splits.forEach((s, i) => {
-        if (s.shares == null || s.shares <= 0) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Доля каждого участника должна быть больше 0",
-            path: ["splits", i, "shares"],
-          })
-        }
-      })
-    }
   })
 
 export type CreateExpenseInput = z.infer<typeof createExpenseSchema>

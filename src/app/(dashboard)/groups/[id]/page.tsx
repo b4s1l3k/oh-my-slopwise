@@ -32,7 +32,7 @@ type Member = {
 type Expense = {
   id: string; title: string; amount: number; currency: string; amountBase?: number | null
   customRate?: number | null
-  date: string; category?: string; splitType: "EQUAL" | "EXACT" | "PERCENTAGE" | "SHARES"
+  date: string; category?: string; splitType: "EQUAL" | "EXACT" | "PERCENTAGE"
   notes?: string | null; paidById: string
   paidBy: { id: string; name: string }
   createdBy: { id: string; name: string }
@@ -52,13 +52,6 @@ function effectiveRequisites(members: Member[], userId: string): Requisites {
   }
 }
 
-function pluralShares(n: number): string {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 === 1 && mod100 !== 11) return "доля"
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "доли"
-  return "долей"
-}
 
 // Пояснение к строке разбивки: процент или число долей (для EQUAL/EXACT — пусто)
 function splitDetailLabel(
@@ -67,9 +60,6 @@ function splitDetailLabel(
 ): string {
   if (splitType === "PERCENTAGE" && split.percentage != null) {
     return `${split.percentage / 100}%`
-  }
-  if (splitType === "SHARES" && split.share != null) {
-    return `${split.share} ${pluralShares(split.share)}`
   }
   return ""
 }

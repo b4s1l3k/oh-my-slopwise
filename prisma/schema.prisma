@@ -155,7 +155,6 @@ enum SplitType {
   EQUAL
   EXACT
   PERCENTAGE
-  SHARES
 }
 
 model ExpenseSplit {

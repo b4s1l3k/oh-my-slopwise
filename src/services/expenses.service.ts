@@ -78,10 +78,6 @@ function buildSplitRows(data: CreateExpenseInput, factor: number) {
     userId: s.userId,
     amount: s.amount,
     amountBase: Math.round(s.amount * factor),
-    share:
-      data.splitType === "SHARES"
-        ? (data.splits[i] as { userId: string; shares: number }).shares
-        : undefined,
     percentage:
       data.splitType === "PERCENTAGE"
         ? (data.splits[i] as { userId: string; percentage: number }).percentage

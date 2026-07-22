@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.env
+.env.local
+.env.*.local
+.idea
+*.log
+
+# build artifacts
+*.tsbuildinfo
+
+# OS junk
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json

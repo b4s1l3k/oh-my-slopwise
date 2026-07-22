@@ -1,0 +1,257 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  name         String
+  avatarUrl    String?
+  passwordHash String
+
+  // Дефолтные реквизиты для получения переводов
+  payeeName    String? // ФИО получателя
+  bankName     String? // банк
+  payeeAccount String? // номер карты / телефона
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  groupsCreated    Group[]        @relation("GroupCreator")
+  groupMemberships GroupMember[]
+  expensesPaid     Expense[]      @relation("ExpensePayer")
+  expensesCreated  Expense[]      @relation("ExpenseCreator")
+  expenseSplits    ExpenseSplit[]
+  settlementsFrom  Settlement[]   @relation("SettlementFrom")
+  settlementsTo    Settlement[]   @relation("SettlementTo")
+  activities       ActivityLog[]
+  friendsRequested Friendship[]   @relation("FriendRequester")
+  friendsReceived  Friendship[]   @relation("FriendAddressee")
+  invitesCreated   GroupInvite[]  @relation("InviteCreator")
+  feedbacks        Feedback[]
+
+  @@map("users")
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@map("feedbacks")
+}
+
+model Friendship {
+  id          String           @id @default(cuid())
+  requesterId String
+  addresseeId String
+  status      FriendshipStatus @default(ACCEPTED)
+  createdAt   DateTime         @default(now())
+
+  requester User @relation("FriendRequester", fields: [requesterId], references: [id])
+  addressee User @relation("FriendAddressee", fields: [addresseeId], references: [id])
+
+  @@unique([requesterId, addresseeId])
+  @@map("friendships")
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+}
+
+model Group {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  type        GroupType @default(OTHER)
+  currency    String    @default("RUB")
+  createdById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy   User          @relation("GroupCreator", fields: [createdById], references: [id])
+  members     GroupMember[]
+  expenses    Expense[]
+  settlements Settlement[]
+  activities  ActivityLog[]
+  invites     GroupInvite[]
+
+  @@map("groups")
+}
+
+enum GroupType {
+  HOME
+  TRIP
+  COUPLE
+  OTHER
+}
+
+model GroupMember {
+  id       String          @id @default(cuid())
+  groupId  String
+  userId   String
+  role     GroupMemberRole @default(MEMBER)
+  joinedAt DateTime        @default(now())
+  isActive Boolean         @default(true)
+
+  // Переопределение реквизитов для этой поездки (если null — берутся из профиля)
+  payeeName    String?
+  bankName     String?
+  payeeAccount String?
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
+enum GroupMemberRole {
+  ADMIN
+  MEMBER
+}
+
+model Expense {
+  id          String    @id @default(cuid())
+  groupId     String
+  paidById    String
+  createdById String
+  title       String
+  amount      Int
+  currency    String    @default("RUB")
+  amountBase  Int? // сумма в валюте расчёта группы (по курсу на дату операции)
+  customRate  Float? // ручной курс «валюта траты → валюта расчёта»; null = курс ЦБ
+  category    String?
+  splitType   SplitType @default(EQUAL)
+  date        DateTime
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group     Group          @relation(fields: [groupId], references: [id])
+  paidBy    User           @relation("ExpensePayer", fields: [paidById], references: [id])
+  createdBy User           @relation("ExpenseCreator", fields: [createdById], references: [id])
+  splits    ExpenseSplit[]
+  // Расчёты наличными, сделанные в момент этой траты
+  settlements Settlement[]
+
+  @@index([groupId])
+  @@index([paidById])
+  @@map("expenses")
+}
+
+enum SplitType {
+  EQUAL
+  EXACT
+  PERCENTAGE
+  SHARES
+}
+
+model ExpenseSplit {
+  id         String @id @default(cuid())
+  expenseId  String
+  userId     String
+  amount     Int
+  amountBase Int? // доля в рублях по курсу ЦБ на дату операции
+  share      Int?
+  percentage Int?
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([expenseId, userId])
+  @@map("expense_splits")
+}
+
+model Settlement {
+  id         String   @id @default(cuid())
+  groupId    String?
+  expenseId  String? // если расчёт сделан наличными в момент конкретной траты
+  fromUserId String
+  toUserId   String
+  amount     Int
+  currency   String   @default("RUB")
+  amountBase Int? // сумма в рублях по курсу ЦБ на дату операции
+  date       DateTime
+  notes      String?
+
+  createdAt DateTime @default(now())
+
+  group    Group?   @relation(fields: [groupId], references: [id])
+  expense  Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  fromUser User     @relation("SettlementFrom", fields: [fromUserId], references: [id])
+  toUser   User     @relation("SettlementTo", fields: [toUserId], references: [id])
+
+  @@index([groupId])
+  @@index([expenseId])
+  @@index([fromUserId, toUserId])
+  @@map("settlements")
+}
+
+model ActivityLog {
+  id         String       @id @default(cuid())
+  groupId    String?
+  actorId    String
+  type       ActivityType
+  entityType String
+  entityId   String
+  metadata   Json
+
+  createdAt DateTime @default(now())
+
+  group Group? @relation(fields: [groupId], references: [id])
+  actor User   @relation(fields: [actorId], references: [id])
+
+  @@index([groupId, createdAt(sort: Desc)])
+  @@map("activity_log")
+}
+
+enum ActivityType {
+  EXPENSE_CREATED
+  EXPENSE_UPDATED
+  EXPENSE_DELETED
+  SETTLEMENT_CREATED
+  SETTLEMENTS_RESET
+  MEMBER_ADDED
+  MEMBER_REMOVED
+  GROUP_UPDATED
+}
+
+// Ссылка-приглашение в поездку (многоразовая, можно отозвать)
+model GroupInvite {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  groupId     String
+  createdById String
+  revoked     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  group     Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdBy User  @relation("InviteCreator", fields: [createdById], references: [id])
+
+  @@index([groupId])
+  @@map("group_invites")
+}
+
+// Кэш курсов ЦБ РФ: сколько рублей за 1 единицу валюты на дату
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  currency  String
+  rate      Float
+  createdAt DateTime @default(now())
+
+  @@unique([date, currency])
+  @@map("exchange_rates")
+}

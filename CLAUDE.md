@@ -55,7 +55,7 @@ Browser (React + TanStack Query)
 
 **Balance calculation** (`/src/lib/utils/balance-calculator.ts`): greedy O(n log n) debt simplification — builds net positions from all expenses and settlements, then greedily pairs largest creditors and debtors to minimize transfer count. This is pure computation with no DB access; it receives pre-fetched data.
 
-**Split modes:** EQUAL, EXACT, PERCENTAGE, SHARES. All split math lives in `/src/lib/utils/split-calculator.ts`. Zod validation in `/src/lib/validations/expense.ts` enforces percentage sum = 100%, etc.
+**Split modes:** EQUAL, EXACT, PERCENTAGE. All split math lives in `/src/lib/utils/split-calculator.ts`. Zod validation in `/src/lib/validations/expense.ts` enforces percentage sum = 100%, etc.
 
 **Cash-on-spot payments:** an expense can have inline cash payments (`cashPayments`) where the payer marks certain participants as already settled. These are stored as part of the expense split data.
 

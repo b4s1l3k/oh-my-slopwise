@@ -82,6 +82,16 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       return next
     })
 
+  const handleOpenExpense = () => {
+    const profile = profileData?.user
+    const hasRequisites = profile?.payeeName || profile?.bankName || profile?.payeeAccount
+    if (!hasRequisites) {
+      setRequisitesNudge(true)
+    } else {
+      setExpenseOpen(true)
+    }
+  }
+
   const { data: groupData, isLoading: loadingGroup } = useQuery({
     queryKey: ["group", groupId],
     queryFn: async () => {
@@ -221,7 +231,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
             <Settings className="h-4 w-4" />
           </Button>
         </Link>
-        <Button onClick={() => setExpenseOpen(true)}>
+        <Button onClick={handleOpenExpense}>
           <Plus className="h-4 w-4 mr-2" />
           Расход
         </Button>
@@ -351,7 +361,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-10 text-center">
               <p className="text-muted-foreground mb-4">Расходов пока нет</p>
-              <Button onClick={() => setExpenseOpen(true)}>
+              <Button onClick={handleOpenExpense}>
                 <Plus className="h-4 w-4 mr-2" />
                 Добавить первый расход
               </Button>
@@ -532,15 +542,12 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
             members={group.members?.map((m: Member) => m.user) ?? []}
             currency={group.currency}
             rateBook={rateBook}
-            onSuccess={(paidById) => {
+            onSuccess={() => {
               setExpenseOpen(false)
               qc.invalidateQueries({ queryKey: ["expenses", groupId] })
               qc.invalidateQueries({ queryKey: ["balances", groupId] })
               qc.invalidateQueries({ queryKey: ["overview"] })
               toast({ title: "Расход добавлен" })
-              const profile = profileData?.user
-              const hasRequisites = profile?.payeeName || profile?.bankName || profile?.payeeAccount
-              if (paidById === myUserId && !hasRequisites) setRequisitesNudge(true)
             }}
           />
         </DialogContent>
@@ -586,10 +593,14 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
         </Dialog>
       )}
 
-      {/* Диалог: предложение добавить реквизиты */}
+      {/* Диалог: реквизиты перед тратой */}
       <RequisitesNudgeDialog
         open={requisitesNudge}
-        onClose={() => setRequisitesNudge(false)}
+        groupId={groupId}
+        onClose={() => {
+          setRequisitesNudge(false)
+          setExpenseOpen(true)
+        }}
       />
 
       {/* Диалог: расчёт */}

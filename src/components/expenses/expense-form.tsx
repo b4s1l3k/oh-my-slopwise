@@ -35,7 +35,7 @@ type Props = {
   expense?: EditableExpense // если передан — режим редактирования
   // Последний ручной курс каждого плательщика по валютам: rateBook[userId][currency]
   rateBook?: Record<string, Record<string, number>>
-  onSuccess: (paidById: string) => void
+  onSuccess: () => void
 }
 
 export function ExpenseForm({ groupId, members, currency, expense, rateBook, onSuccess }: Props) {
@@ -144,7 +144,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, onS
       }
       return res.json()
     },
-    onSuccess: () => onSuccess(paidById),
+    onSuccess: onSuccess,
     onError: (e) => toast({ title: e instanceof Error ? e.message : "Ошибка", variant: "destructive" }),
   })
 

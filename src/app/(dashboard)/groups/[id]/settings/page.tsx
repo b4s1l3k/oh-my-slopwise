@@ -369,14 +369,15 @@ export default function GroupSettingsPage({ params }: { params: Promise<{ id: st
         </CardContent>
       </Card>
 
-      {/* Реквизиты для этой поездки */}
+      {/* Реквизиты для этой группы */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Мои реквизиты в этой поездке</CardTitle>
+          <CardTitle className="text-base">Мои реквизиты в этой группе</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            Если оставить пустым — будут использованы реквизиты из профиля.
+            Только для этой группы — не влияют на реквизиты в профиле.
+            Если оставить пустым, участники увидят реквизиты из вашего профиля.
           </p>
           <div className="space-y-2">
             <Label>ФИО получателя</Label>

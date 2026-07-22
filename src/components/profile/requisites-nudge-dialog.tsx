@@ -16,34 +16,55 @@ import { useToast } from "@/components/ui/toast"
 
 type Props = {
   open: boolean
+  groupId: string
   onClose: () => void
 }
 
-export function RequisitesNudgeDialog({ open, onClose }: Props) {
+export function RequisitesNudgeDialog({ open, groupId, onClose }: Props) {
   const qc = useQueryClient()
   const { toast } = useToast()
   const [payeeName, setPayeeName] = useState("")
   const [bankName, setBankName] = useState("")
   const [payeeAccount, setPayeeAccount] = useState("")
 
-  const save = useMutation({
+  const isEmpty = !payeeName.trim() && !bankName.trim() && !payeeAccount.trim()
+  const body = { payeeName, bankName, payeeAccount }
+
+  const saveToProfile = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/v1/users/me", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payeeName, bankName, payeeAccount }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error("Не удалось сохранить")
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["profile"] })
-      toast({ title: "Реквизиты сохранены" })
+      toast({ title: "Реквизиты сохранены в профиле" })
       onClose()
     },
     onError: (e) => toast({ title: e.message, variant: "destructive" }),
   })
 
-  const isEmpty = !payeeName.trim() && !bankName.trim() && !payeeAccount.trim()
+  const saveToGroup = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/v1/groups/${groupId}/requisites`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error("Не удалось сохранить")
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["group", groupId] })
+      toast({ title: "Реквизиты сохранены для этой группы" })
+      onClose()
+    },
+    onError: (e) => toast({ title: e.message, variant: "destructive" }),
+  })
+
+  const isPending = saveToProfile.isPending || saveToGroup.isPending
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -54,7 +75,7 @@ export function RequisitesNudgeDialog({ open, onClose }: Props) {
           </div>
           <DialogTitle>Добавьте реквизиты</DialogTitle>
           <DialogDescription>
-            Участники группы увидят их, когда будут переводить вам деньги.
+            Участники увидят их, когда будут переводить вам деньги.
           </DialogDescription>
         </DialogHeader>
 
@@ -85,16 +106,30 @@ export function RequisitesNudgeDialog({ open, onClose }: Props) {
           </div>
         </div>
 
-        <div className="flex gap-2 pt-1">
+        <div className="space-y-2 pt-1">
           <Button
-            className="flex-1"
-            disabled={save.isPending || isEmpty}
-            onClick={() => save.mutate()}
+            className="w-full"
+            disabled={isPending || isEmpty}
+            onClick={() => saveToProfile.mutate()}
           >
-            {save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Сохранить
+            {saveToProfile.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Сохранить в профиль
           </Button>
-          <Button variant="ghost" onClick={onClose} disabled={save.isPending}>
+          <Button
+            variant="outline"
+            className="w-full"
+            disabled={isPending || isEmpty}
+            onClick={() => saveToGroup.mutate()}
+          >
+            {saveToGroup.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Только для этой группы
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Пропустить
           </Button>
         </div>

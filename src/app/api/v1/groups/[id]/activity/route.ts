@@ -12,7 +12,7 @@ export async function GET(req: Request, { params }: Params) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId: session.user.id } },
   })
-  if (!member) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!member?.isActive) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const activities = await prisma.activityLog.findMany({
     where: { groupId },

@@ -88,7 +88,7 @@ export async function getGroupSettlements(groupId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
   })
-  if (!member) throw new Error("FORBIDDEN")
+  if (!member?.isActive) throw new Error("FORBIDDEN")
 
   return prisma.settlement.findMany({
     where: { groupId },

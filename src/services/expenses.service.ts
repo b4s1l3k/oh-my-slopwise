@@ -23,7 +23,12 @@ const expenseInclude = {
   },
 }
 
-export async function getGroupExpenses(groupId: string, page = 1, perPage = 30) {
+export async function getGroupExpenses(groupId: string, userId: string, page = 1, perPage = 30) {
+  const member = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+  })
+  if (!member?.isActive) throw new Error("FORBIDDEN")
+
   const [expenses, total] = await Promise.all([
     prisma.expense.findMany({
       where: { groupId },
@@ -67,6 +72,9 @@ async function validateExpenseParticipants(
   if (!memberIds.has(data.paidById)) throw new Error("PAYER_NOT_MEMBER")
   for (const s of data.splits) {
     if (!memberIds.has(s.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
+  }
+  for (const cp of data.cashPayments ?? []) {
+    if (!memberIds.has(cp.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
   }
   return group.currency
 }

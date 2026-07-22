@@ -4,6 +4,7 @@ import * as expensesService from "@/services/expenses.service"
 import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
 
+
 type Params = { params: Promise<{ id: string }> }
 
 export async function GET(req: Request, { params }: Params) {
@@ -15,10 +16,10 @@ export async function GET(req: Request, { params }: Params) {
   const page = Number(url.searchParams.get("page") ?? 1)
 
   try {
-    const result = await expensesService.getGroupExpenses(groupId, page)
+    const result = await expensesService.getGroupExpenses(groupId, session.user.id, page)
     return NextResponse.json(result)
-  } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  } catch (e) {
+    return handleServiceError(e)
   }
 }
 

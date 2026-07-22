@@ -20,7 +20,7 @@ export const createExpenseSchema = z
     // Не задан → пересчёт по курсу ЦБ на дату операции.
     customRate: z.number().positive().max(1_000_000).optional(),
     category: z.string().optional(),
-    date: z.string(),
+    date: z.string().refine((d) => !isNaN(new Date(d).getTime()), { message: "Некорректная дата" }),
     paidById: z.string().min(1, "Укажите плательщика"),
     notes: z.string().max(1000).optional(),
     splitType: z.enum(["EQUAL", "EXACT", "PERCENTAGE"]),

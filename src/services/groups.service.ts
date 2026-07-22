@@ -173,7 +173,7 @@ async function assertAdmin(groupId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
   })
-  if (!member || member.role !== "ADMIN") {
+  if (!member || !member.isActive || member.role !== "ADMIN") {
     throw new Error("FORBIDDEN")
   }
 }

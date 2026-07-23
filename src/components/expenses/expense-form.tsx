@@ -77,6 +77,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
   )
   const [cashPayments, setCashPayments] = useState<Record<string, string>>({})
   const [showCashSection, setShowCashSection] = useState(false)
+  const [rateRequired, setRateRequired] = useState(false)
 
   useEffect(() => {
     // автоподстановка плательщика только при создании
@@ -135,12 +136,17 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
       })
       if (!res.ok) {
         const data = (await res.json()) as {
-          error?: string | { formErrors?: string[]; fieldErrors?: Record<string, string[]> }
+          error?: string | { code?: string; message?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]> }
+        }
+        if (typeof data.error === "object" && data.error?.code === "RATE_UNAVAILABLE") {
+          setRateRequired(true)
+          throw new Error("RATE_UNAVAILABLE")
         }
         const msg =
           typeof data.error === "string"
             ? data.error
-            : data.error?.formErrors?.[0] ??
+            : data.error?.message ??
+              data.error?.formErrors?.[0] ??
               Object.values(data.error?.fieldErrors ?? {})[0]?.[0] ??
               (isEdit ? "Ошибка сохранения" : "Ошибка создания расхода")
         throw new Error(msg)
@@ -148,7 +154,10 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
       return res.json()
     },
     onSuccess: onSuccess,
-    onError: (e) => toast({ title: e instanceof Error ? e.message : "Ошибка", variant: "destructive" }),
+    onError: (e) => {
+      if (e instanceof Error && e.message === "RATE_UNAVAILABLE") return
+      toast({ title: e instanceof Error ? e.message : "Ошибка", variant: "destructive" })
+    },
   })
 
   const totalAmount = parseMoneyInput(amountStr)
@@ -198,22 +207,28 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
 
       {/* Ручной курс — только если валюта траты ≠ валюте расчёта */}
       {differentCurrency && (
-        <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+        <div className={`space-y-2 rounded-lg border p-3 ${rateRequired ? "border-destructive bg-destructive/5" : "bg-muted/30"}`}>
           <Label className="flex items-baseline gap-2">
             Курс
-            <span className="text-xs font-normal text-muted-foreground">необязательно</span>
+            {!rateRequired && <span className="text-xs font-normal text-muted-foreground">необязательно</span>}
+            {rateRequired && <span className="text-xs font-normal text-destructive">обязательно</span>}
           </Label>
+          {rateRequired && (
+            <p className="text-xs text-destructive font-medium">
+              Курс ЦБ временно недоступен — укажите курс вручную
+            </p>
+          )}
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground whitespace-nowrap">1 {expSymbol} =</span>
             <Input
               type="number"
               placeholder="по курсу ЦБ"
               value={rateStr}
-              onChange={(e) => setRateStr(e.target.value)}
+              onChange={(e) => { setRateStr(e.target.value); setRateRequired(false) }}
               inputMode="decimal"
               min="0"
               step="0.0001"
-              className="w-32 h-8"
+              className={`w-32 h-8 ${rateRequired ? "border-destructive" : ""}`}
             />
             <span className="text-muted-foreground whitespace-nowrap">{settlementSymbol}</span>
           </div>

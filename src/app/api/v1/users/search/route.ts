@@ -14,15 +14,10 @@ export async function GET(req: Request) {
     where: {
       AND: [
         { id: { not: session.user.id } },
-        {
-          OR: [
-            { email: { contains: q, mode: "insensitive" } },
-            { name: { contains: q, mode: "insensitive" } },
-          ],
-        },
+        { name: { contains: q, mode: "insensitive" } },
       ],
     },
-    select: { id: true, name: true, email: true, avatarUrl: true },
+    select: { id: true, name: true, avatarUrl: true },
     take: 10,
   })
   return NextResponse.json({ users })

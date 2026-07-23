@@ -13,7 +13,7 @@ import Link from "next/link"
 import { getInitials } from "@/lib/utils/format"
 import { CurrencySelect } from "@/components/ui/currency-select"
 
-type UserResult = { id: string; name: string; email: string; avatarUrl: string | null }
+type UserResult = { id: string; name: string; avatarUrl: string | null }
 
 export default function NewGroupPage() {
   const router = useRouter()
@@ -106,7 +106,7 @@ export default function NewGroupPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               className="pl-9"
-              placeholder="Найти по email или имени..."
+              placeholder="Найти по имени..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)
@@ -133,7 +133,6 @@ export default function NewGroupPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{user.name}</p>
-                    <p className="text-xs text-muted-foreground">{user.email}</p>
                   </div>
                 </button>
               ))}

@@ -22,7 +22,7 @@ type Member = {
   payeeAccount: string | null
   user: { id: string; name: string; email: string; avatarUrl: string | null }
 }
-type UserResult = { id: string; name: string; email: string; avatarUrl: string | null }
+type UserResult = { id: string; name: string; avatarUrl: string | null }
 
 async function apiError(res: Response, fallback: string) {
   try {
@@ -263,7 +263,7 @@ export default function GroupSettingsPage({ params }: { params: Promise<{ id: st
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="Добавить по email или имени..."
+                placeholder="Добавить по имени..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value)
@@ -284,7 +284,6 @@ export default function GroupSettingsPage({ params }: { params: Promise<{ id: st
                       </div>
                       <div>
                         <p className="text-sm font-medium">{u.name}</p>
-                        <p className="text-xs text-muted-foreground">{u.email}</p>
                       </div>
                     </button>
                   ))}

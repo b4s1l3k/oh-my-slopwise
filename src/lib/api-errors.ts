@@ -20,6 +20,7 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
     message: "У участника ненулевой баланс — сначала рассчитайтесь",
   },
   INVITE_INVALID: { status: 404, message: "Приглашение недействительно или отозвано" },
+  RATE_UNAVAILABLE: { status: 503, message: "Курс ЦБ временно недоступен — укажите курс вручную" },
 }
 
 export function handleServiceError(e: unknown): NextResponse {

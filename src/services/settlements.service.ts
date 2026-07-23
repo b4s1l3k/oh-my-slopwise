@@ -57,10 +57,10 @@ export async function createSettlement(
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
-// Сброс всех зафиксированных расчётов группы (только админ).
-// Нужен, когда расчёты «зависли» относительно трат: например, рассчитались,
-// потом удалили/переоформили траты — старые Settlement становятся фантомными
-// и гасят актуальные долги. После сброса долги считаются заново по текущим тратам.
+// Сброс зафиксированных расчётов группы (только админ).
+// Удаляет только ручные расчёты (expenseId IS NULL).
+// Наличные платежи на месте (привязаны к конкретной трате) не затрагивает —
+// они считаются частью траты и пересчёт балансов их не отменяет.
 export async function resetSettlements(groupId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
@@ -68,7 +68,7 @@ export async function resetSettlements(groupId: string, userId: string) {
   if (!member?.isActive || member.role !== "ADMIN") throw new Error("FORBIDDEN")
 
   return prisma.$transaction(async (tx) => {
-    const { count } = await tx.settlement.deleteMany({ where: { groupId } })
+    const { count } = await tx.settlement.deleteMany({ where: { groupId, expenseId: null } })
     if (count > 0) {
       await tx.activityLog.create({
         data: {

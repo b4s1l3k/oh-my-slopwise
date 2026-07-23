@@ -26,9 +26,9 @@ export default async function RootPage() {
       {/* Hero */}
       <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:py-28">
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-          Делите расходы,
+          Делите эмоции,
           <br />
-          <span className="text-primary">а не нервы</span>
+          <span className="text-primary">а не траты</span>
         </h1>
         <p className="mx-auto mt-6 max-w-xl text-lg text-muted-foreground">
           Добавляйте общие траты, указывайте кто что оплатил — SLOPwise сам посчитает,

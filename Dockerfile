@@ -15,6 +15,13 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
+# A dedicated, short-lived target for database migrations. It is not the
+# production application image and is run once before deploying the runner:
+#   docker build --target migrator -t slopwise-migrator .
+#   docker run --rm -e DATABASE_URL slopwise-migrator
+FROM builder AS migrator
+CMD ["npx", "prisma", "migrate", "deploy", "--schema=prisma/schema.prisma"]
+
 FROM node:22-alpine AS runner
 
 WORKDIR /app
@@ -31,15 +38,7 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Prisma CLI для migrate deploy на старте. Копируем ПОЛНЫЙ node_modules из builder,
-# т.к. у CLI есть транзитивные зависимости вне scope @prisma (effect, c12, ...),
-# которые cherry-pick'ом не собрать надёжно.
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
-
 USER nextjs
 EXPOSE 3000
 
-CMD ["./docker-entrypoint.sh"]
+CMD ["node", "server.js"]

@@ -7,7 +7,9 @@ import {
   Globe,
   PlusCircle,
   Receipt,
+  Trophy,
   Users,
+  WalletCards,
 } from "lucide-react"
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
@@ -192,17 +194,17 @@ export default async function RootPage() {
       <section className="border-t bg-muted/40">
         <div className="mx-auto max-w-5xl px-4 py-16 sm:py-20">
           <h2 className="mb-10 text-center text-2xl font-bold sm:text-3xl">Что ещё умеет SLOPwise</h2>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[
               {
                 icon: Globe,
-                title: "Расходы в любой валюте",
-                body: "Рубли, доллары, евро, армянские драмы. Курс ЦБ на дату траты — или свой, если договорились иначе.",
+                title: "Расходы в разных валютах",
+                body: "Выбирайте валюту траты. Пересчёт выполняется по курсу ЦБ на нужную дату — или по вашему курсу.",
               },
               {
                 icon: Activity,
                 title: "История активности",
-                body: "Все изменения расходов, переводы и состав группы — в ленте событий. Ничего не потеряется.",
+                body: "Изменения расходов, переводы и состав группы собраны в ленте событий — легко понять, что происходило.",
               },
               {
                 icon: Banknote,
@@ -213,6 +215,16 @@ export default async function RootPage() {
                 icon: Users,
                 title: "Несколько групп",
                 body: "Квартира, поездки, корпоратив — каждая группа ведёт свой учёт. Обзор показывает общий баланс.",
+              },
+              {
+                icon: Trophy,
+                title: "Ачивки",
+                body: "Траты, способы деления, расчёты и группы открывают достижения. Прогресс всегда виден в профиле.",
+              },
+              {
+                icon: WalletCards,
+                title: "Платёжные реквизиты",
+                body: "Сохраните получателя, банк и номер для перевода в профиле или задайте отдельные реквизиты для группы.",
               },
             ].map(({ icon: Icon, title, body }) => (
               <div key={title} className="rounded-xl border bg-card p-6">

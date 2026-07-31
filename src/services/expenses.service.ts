@@ -34,7 +34,7 @@ export async function getGroupExpenses(groupId: string, userId: string, page = 1
     prisma.expense.findMany({
       where: { groupId },
       include: expenseInclude,
-      orderBy: { date: "desc" },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * perPage,
       take: perPage,
     }),

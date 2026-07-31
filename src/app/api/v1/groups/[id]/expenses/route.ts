@@ -14,6 +14,9 @@ export async function GET(req: Request, { params }: Params) {
   const { id: groupId } = await params
   const url = new URL(req.url)
   const page = Number(url.searchParams.get("page") ?? 1)
+  if (!Number.isSafeInteger(page) || page < 1) {
+    return NextResponse.json({ error: "Invalid page" }, { status: 400 })
+  }
 
   try {
     const result = await expensesService.getGroupExpenses(groupId, session.user.id, page)

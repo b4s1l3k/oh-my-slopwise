@@ -1,6 +1,6 @@
 "use client"
 import { use, useState, useMemo } from "react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { formatMoney, formatDate, getInitials } from "@/lib/utils/format"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,6 +16,7 @@ import Link from "next/link"
 import { ExpenseForm } from "@/components/expenses/expense-form"
 import { SettlementForm } from "@/components/balances/settlement-form"
 import { RequisitesNudgeDialog } from "@/components/profile/requisites-nudge-dialog"
+import { getExpenseUserPosition } from "@/lib/utils/expense-user-position"
 
 type Requisites = { payeeName: string | null; bankName: string | null; payeeAccount: string | null }
 type Member = {
@@ -40,6 +41,7 @@ type Expense = {
   // Расчёты наличными, сделанные в момент этой траты
   settlements?: { id: string; amount: number; currency: string; fromUser: { id: string; name: string } }[]
 }
+type ExpensesPage = { expenses: Expense[]; total: number; hasNext: boolean }
 type Debt = { fromUserId: string; fromUserName: string; toUserId: string; toUserName: string; amount: number }
 
 // Реквизиты поездки перекрывают профильные
@@ -102,13 +104,22 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     },
   })
 
-  const { data: expensesData, isLoading: loadingExpenses } = useQuery({
+  const {
+    data: expensesData,
+    isLoading: loadingExpenses,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteQuery({
     queryKey: ["expenses", groupId],
-    queryFn: async () => {
-      const res = await fetch(`/api/v1/groups/${groupId}/expenses`)
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) => {
+      const res = await fetch(`/api/v1/groups/${groupId}/expenses?page=${pageParam}`)
       if (!res.ok) throw new Error("Failed")
-      return res.json()
+      return res.json() as Promise<ExpensesPage>
     },
+    getNextPageParam: (lastPage, pages) => lastPage.hasNext ? pages.length + 1 : undefined,
   })
 
   const { data: balancesData, isLoading: loadingBalances } = useQuery({
@@ -156,7 +167,8 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   })
 
   const group = groupData?.group
-  const expenses: Expense[] = expensesData?.expenses ?? []
+  const expenses: Expense[] = expensesData?.pages.flatMap((page) => page.expenses) ?? []
+  const expensesTotal: number = expensesData?.pages[0]?.total ?? expenses.length
   const debts: Debt[] = balancesData?.balances?.simplified ?? []
   const myUserId = session?.user?.id
   const iAmAdmin = group?.members?.some(
@@ -354,7 +366,11 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       {/* Расходы */}
       <div>
         <h2 className="text-lg font-semibold mb-3">
-          Расходы ({selectedMemberId ? `${filteredExpenses.length} из ${expenses.length}` : expenses.length})
+          Расходы ({selectedMemberId
+            ? `${filteredExpenses.length} из ${expenses.length} загруженных`
+            : hasNextPage
+              ? `${expenses.length} из ${expensesTotal}`
+              : expenses.length})
         </h2>
         {loadingExpenses ? (
           <div className="space-y-2">
@@ -374,7 +390,6 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
           <div className="space-y-2">
             {filteredExpenses.map((expense) => {
               const myShare = expense.splits.find((s) => s.user.id === myUserId)?.amount
-              const iMePaid = expense.paidBy.id === myUserId
               const expanded = expandedIds.has(expense.id)
               // Наличные, отданные плательщику в момент траты, по каждому участнику
               const cashByUser: Record<string, number> = {}
@@ -382,6 +397,13 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                 cashByUser[s.fromUser.id] = (cashByUser[s.fromUser.id] ?? 0) + s.amount
               }
               const totalCash = Object.values(cashByUser).reduce((a, b) => a + b, 0)
+              const myPosition = getExpenseUserPosition({
+                currentUserId: myUserId,
+                paidById: expense.paidById,
+                expenseAmount: expense.amount,
+                shareAmount: myShare,
+                cashPaid: myUserId ? cashByUser[myUserId] : 0,
+              })
               return (
                 <Card key={expense.id}>
                   <CardContent className="p-4">
@@ -391,11 +413,29 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {expense.paidBy.name} · {formatDate(expense.date)}
                         </p>
-                        {myShare !== undefined && (
-                          <p className={`text-xs mt-1 font-medium ${iMePaid ? "text-green-600" : "text-destructive"}`}>
-                            {iMePaid
-                              ? `Вы заплатили ${formatMoney(expense.amount, expense.currency)}`
-                              : `Ваша доля: ${formatMoney(myShare, expense.currency)}`}
+                        {myPosition?.kind === "PAID" && (
+                          <p className="text-xs mt-1 font-medium text-green-600">
+                            Вы заплатили {formatMoney(myPosition.amount, expense.currency)}
+                          </p>
+                        )}
+                        {myPosition?.kind === "OWES" && (
+                          <p className="text-xs mt-1 font-medium text-destructive">
+                            Вы должны по этой трате {formatMoney(myPosition.amount, expense.currency)}
+                            {myPosition.cashPaid > 0 && (
+                              <span className="text-muted-foreground font-normal">
+                                {" · "}{formatMoney(myPosition.cashPaid, expense.currency)} уже наличными
+                              </span>
+                            )}
+                          </p>
+                        )}
+                        {myPosition?.kind === "SETTLED" && (
+                          <p className="text-xs mt-1 font-medium text-green-600">
+                            Вы рассчитались наличными: {formatMoney(myPosition.cashPaid, expense.currency)}
+                          </p>
+                        )}
+                        {myPosition?.kind === "CASH_PAID" && (
+                          <p className="text-xs mt-1 font-medium text-green-600">
+                            Вы отдали наличными {formatMoney(myPosition.cashPaid, expense.currency)}
                           </p>
                         )}
                       </div>
@@ -530,6 +570,27 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                 </Card>
               )
             })}
+            {hasNextPage && (
+              <div className="flex flex-col items-center gap-2 pt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isFetchingNextPage ? "Загружаем…" : "Показать ещё"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Загружено {expenses.length} из {expensesTotal}
+                </p>
+                {isFetchNextPageError && (
+                  <p className="text-xs text-destructive">
+                    Не удалось загрузить расходы. Попробуйте ещё раз.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

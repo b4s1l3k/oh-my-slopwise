@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/db"
 import { randomUUID } from "crypto"
+import {
+  recordGroupMemberJoined,
+  recordInviteHistory,
+} from "@/services/statistics-history.service"
 
 async function assertMember(groupId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
@@ -29,9 +33,11 @@ export async function getOrCreateInvite(groupId: string, userId: string) {
       orderBy: { createdAt: "desc" },
     })
     if (existing) return existing
-    return tx.groupInvite.create({
+    const invite = await tx.groupInvite.create({
       data: { token: randomUUID().replace(/-/g, ""), groupId, createdById: userId },
     })
+    await recordInviteHistory(tx, invite)
+    return invite
   })
 }
 
@@ -103,6 +109,7 @@ export async function acceptInvite(token: string, userId: string) {
         metadata: { memberName: user?.name, viaInvite: true },
       },
     })
+    await recordGroupMemberJoined(tx, invite.groupId, userId)
     await tx.group.update({ where: { id: invite.groupId }, data: { updatedAt: new Date() } })
     return { groupId: invite.groupId }
   })

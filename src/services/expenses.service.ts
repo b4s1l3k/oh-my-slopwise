@@ -3,6 +3,10 @@ import { Prisma } from "@prisma/client"
 import { calculateSplits } from "@/lib/utils/split-calculator"
 import { getRateToRub } from "@/services/exchange.service"
 import type { CreateExpenseInput } from "@/lib/validations/expense"
+import {
+  recordExpenseHistory,
+  recordSettlementHistory,
+} from "@/services/statistics-history.service"
 
 const splitInclude = {
   user: { select: { id: true, name: true, avatarUrl: true } },
@@ -238,8 +242,20 @@ export async function createExpense(
             },
           },
         })
+        await recordSettlementHistory(tx, settlement)
       }
     }
+
+    await recordExpenseHistory(tx, {
+      id: expense.id,
+      groupId: expense.groupId,
+      createdById: expense.createdById,
+      paidById: expense.paidById,
+      currency: expense.currency,
+      splitType: expense.splitType,
+      customRate: expense.customRate,
+      participantIds: expense.splits.map((split) => split.userId),
+    })
 
     await tx.group.update({ where: { id: groupId }, data: { updatedAt: new Date() } })
     return expense
@@ -381,6 +397,16 @@ export async function updateExpense(
           changes,
         },
       },
+    })
+    await recordExpenseHistory(tx, {
+      id: expense.id,
+      groupId: expense.groupId,
+      createdById: expense.createdById,
+      paidById: expense.paidById,
+      currency: expense.currency,
+      splitType: expense.splitType,
+      customRate: expense.customRate,
+      participantIds: expense.splits.map((split) => split.userId),
     })
     await tx.group.update({ where: { id: existing.groupId }, data: { updatedAt: new Date() } })
     return expense

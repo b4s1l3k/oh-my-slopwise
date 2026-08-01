@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   BarChart3,
@@ -15,7 +16,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ProfileStatistics } from "@/lib/statistics"
 
-type StatisticsResponse = { statistics: ProfileStatistics }
+type StatisticsResponse = {
+  lifetime: ProfileStatistics
+  current: ProfileStatistics
+}
 
 const numberFormatter = new Intl.NumberFormat("ru-RU")
 
@@ -67,6 +71,7 @@ function DetailRow({ label, value }: { label: string; value: number | string }) 
 }
 
 export function StatisticsSection() {
+  const [mode, setMode] = useState<"lifetime" | "current">("lifetime")
   const { data, isLoading, isError } = useQuery({
     queryKey: ["statistics"],
     queryFn: async () => {
@@ -103,7 +108,8 @@ export function StatisticsSection() {
     )
   }
 
-  const { statistics } = data
+  const statistics = data[mode]
+  const isLifetime = mode === "lifetime"
   const splitTotal = statistics.splits.equal + statistics.splits.exact + statistics.splits.percentage
 
   return (
@@ -114,11 +120,36 @@ export function StatisticsSection() {
           Статистика
         </CardTitle>
         <CardDescription>
-          Текущие данные по вашим группам, расходам и расчётам
+          История аккаунта и живой снимок существующих данных
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-6">
+        <div className="grid grid-cols-2 rounded-lg bg-muted p-1" role="tablist" aria-label="Период статистики">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isLifetime}
+            onClick={() => setMode("lifetime")}
+            className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              isLifetime ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            За всё время
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!isLifetime}
+            onClick={() => setMode("current")}
+            className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              !isLifetime ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Сейчас
+          </button>
+        </div>
+
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatValue
             label="Участий в тратах"
@@ -136,7 +167,7 @@ export function StatisticsSection() {
             icon={Wallet}
           />
           <StatValue
-            label="Активных групп"
+            label={isLifetime ? "Максимум активных групп" : "Активных групп"}
             value={statistics.overview.activeGroups}
             icon={Users}
           />
@@ -146,7 +177,9 @@ export function StatisticsSection() {
           <section className="space-y-3" aria-labelledby="statistics-splits">
             <div>
               <h3 id="statistics-splits" className="text-sm font-semibold">Способы деления</h3>
-              <p className="text-xs text-muted-foreground">В добавленных вами тратах</p>
+              <p className="text-xs text-muted-foreground">
+                {isLifetime ? "Использовано за всё время" : "В существующих тратах"}
+              </p>
             </div>
             <SplitRow label="Поровну" value={statistics.splits.equal} total={splitTotal} />
             <SplitRow label="По суммам" value={statistics.splits.exact} total={splitTotal} />
@@ -158,7 +191,10 @@ export function StatisticsSection() {
               <Handshake className="h-4 w-4 text-primary" aria-hidden="true" />
               Вместе
             </h3>
-            <DetailRow label="Людей в активных группах" value={formatNumber(statistics.collaboration.uniquePeople)} />
+            <DetailRow
+              label={isLifetime ? "Людей за всё время" : "Людей в активных группах"}
+              value={formatNumber(statistics.collaboration.uniquePeople)}
+            />
             <DetailRow label="Зафиксировано расчётов" value={formatNumber(statistics.collaboration.settlementsSent)} />
             <DetailRow label="Получено расчётов" value={formatNumber(statistics.collaboration.settlementsReceived)} />
             <DetailRow label="Наличных расчётов" value={formatNumber(statistics.collaboration.cashSettlements)} />
@@ -173,7 +209,7 @@ export function StatisticsSection() {
               <Users className="h-4 w-4 text-primary" aria-hidden="true" />
               Группы
             </h3>
-            <DetailRow label="Создано вами" value={formatNumber(statistics.groups.created)} />
+            <DetailRow label={isLifetime ? "Создано вами за всё время" : "Создано и существует"} value={formatNumber(statistics.groups.created)} />
             <DetailRow label="Дом" value={formatNumber(statistics.groups.home)} />
             <DetailRow label="Поездки" value={formatNumber(statistics.groups.trip)} />
             <DetailRow label="Пары" value={formatNumber(statistics.groups.couple)} />
@@ -198,8 +234,9 @@ export function StatisticsSection() {
         <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
           <Globe2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <p>
-            Денежные суммы из разных валют не складываются. После удаления траты или группы
-            текущая статистика пересчитывается автоматически.
+            {isLifetime
+              ? "История сохраняется в аккаунте: удаление группы или траты не уменьшает эти показатели и личные рекорды."
+              : "Этот раздел считается по существующим группам, тратам и расчётам, поэтому меняется после их редактирования или удаления."}
           </p>
         </div>
       </CardContent>

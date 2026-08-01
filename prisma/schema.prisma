@@ -35,6 +35,7 @@ model User {
   invitesCreated   GroupInvite[]  @relation("InviteCreator")
   feedbacks        Feedback[]
   achievements     UserAchievement[]
+  statisticFacts   UserStatisticFact[]
 
   @@map("users")
 }
@@ -52,6 +53,24 @@ model UserAchievement {
   @@unique([userId, achievementId])
   @@index([achievementId])
   @@map("user_achievements")
+}
+
+// Immutable account-level facts survive deletion of their source groups,
+// expenses and settlements. They power lifetime statistics and achievements,
+// while the existing domain tables remain the source of current statistics.
+model UserStatisticFact {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String
+  reference String
+  value     Int      @default(1)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, reference])
+  @@index([userId, kind])
+  @@map("user_statistic_facts")
 }
 
 model Feedback {

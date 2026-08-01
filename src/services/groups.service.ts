@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db"
 import { Prisma } from "@prisma/client"
 import { computeGroupDebts } from "@/services/balances.service"
+import {
+  recordGroupCreated,
+  recordGroupMemberJoined,
+} from "@/services/statistics-history.service"
 import type { CreateGroupInput, UpdateGroupInput } from "@/lib/validations/group"
 
 const memberInclude = {
@@ -87,21 +91,25 @@ export async function createGroup(userId: string, data: CreateGroupInput) {
   const existingUsers = await prisma.user.count({ where: { id: { in: memberIds } } })
   if (existingUsers !== memberIds.length) throw new Error("USER_NOT_FOUND")
 
-  return prisma.group.create({
-    data: {
-      name: data.name,
-      description: data.description,
-      type: data.type,
-      currency: data.currency,
-      createdById: userId,
-      members: {
-        create: memberIds.map((id) => ({
-          userId: id,
-          role: id === userId ? "ADMIN" : "MEMBER",
-        })),
+  return prisma.$transaction(async (tx) => {
+    const group = await tx.group.create({
+      data: {
+        name: data.name,
+        description: data.description,
+        type: data.type,
+        currency: data.currency,
+        createdById: userId,
+        members: {
+          create: memberIds.map((id) => ({
+            userId: id,
+            role: id === userId ? "ADMIN" : "MEMBER",
+          })),
+        },
       },
-    },
-    include: { members: { include: memberInclude } },
+      include: { members: { include: memberInclude } },
+    })
+    await recordGroupCreated(tx, group, memberIds)
+    return group
   })
 }
 
@@ -190,6 +198,7 @@ export async function addMember(groupId: string, adminId: string, memberId: stri
         metadata: { memberName: user.name },
       },
     })
+    await recordGroupMemberJoined(tx, groupId, memberId)
     return member
   })
 }

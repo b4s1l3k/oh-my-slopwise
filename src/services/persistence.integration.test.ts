@@ -1,10 +1,14 @@
 import { afterAll, describe, expect, it } from "vitest"
 import { prisma } from "@/lib/db"
 import { getUserAchievements } from "@/services/achievements.service"
-import { deleteExpense, getExpense, updateExpense } from "@/services/expenses.service"
-import { deleteGroup, getGroup, removeMember } from "@/services/groups.service"
+import { createExpense, deleteExpense, getExpense, updateExpense } from "@/services/expenses.service"
+import { createGroup, deleteGroup, getGroup, removeMember } from "@/services/groups.service"
 import { acceptInvite, revokeInvite } from "@/services/invites.service"
-import { getUserStatistics } from "@/services/statistics.service"
+import {
+  getCurrentUserStatistics,
+  getHistoricalUserStatistics,
+  getUserStatistics,
+} from "@/services/statistics.service"
 
 const runDatabaseTests = process.env.RUN_DB_INTEGRATION_TESTS === "true"
 const describeDatabase = runDatabaseTests ? describe : describe.skip
@@ -19,6 +23,84 @@ describeDatabase("achievement persistence and group deletion", () => {
       where: { email: { startsWith: testPrefix } },
     })
     await prisma.$disconnect()
+  })
+
+  it("keeps lifetime statistics and achievement progress after deleting a group", async () => {
+    const now = new Date("2026-08-01T12:00:00.000Z")
+    const [admin, member] = await Promise.all([
+      prisma.user.create({
+        data: {
+          email: `${testPrefix}-history-admin@example.com`,
+          name: "History Admin",
+          passwordHash: "test-only",
+          createdAt: new Date("2025-01-01T00:00:00.000Z"),
+        },
+      }),
+      prisma.user.create({
+        data: {
+          email: `${testPrefix}-history-member@example.com`,
+          name: "History Member",
+          passwordHash: "test-only",
+        },
+      }),
+    ])
+
+    const group = await createGroup(admin.id, {
+      name: "Historical trip",
+      description: "Must survive as account history",
+      type: "TRIP",
+      currency: "RUB",
+      memberIds: [member.id],
+    })
+    await createExpense(group.id, admin.id, {
+      title: "Dinner",
+      amount: 1000,
+      currency: "RUB",
+      date: now.toISOString(),
+      paidById: admin.id,
+      splitType: "EQUAL",
+      splits: [{ userId: admin.id }, { userId: member.id }],
+      cashPayments: [{ userId: member.id, amount: 500 }],
+    })
+
+    await deleteGroup(group.id, admin.id)
+
+    const [current, historical, achievements] = await Promise.all([
+      getCurrentUserStatistics(admin.id, now),
+      getHistoricalUserStatistics(admin.id, now),
+      getUserAchievements(admin.id, now),
+    ])
+
+    expect(current).toMatchObject({
+      activeGroups: 0,
+      groupsCreated: 0,
+      expensesCreated: 0,
+      expensesParticipated: 0,
+      expensesPaid: 0,
+      settlementsReceived: 0,
+      currenciesUsed: 0,
+    })
+    expect(historical).toMatchObject({
+      activeGroups: 1,
+      groupsCreated: 1,
+      expensesCreated: 1,
+      expensesParticipated: 1,
+      expensesPaid: 1,
+      settlementsReceived: 1,
+      equalSplits: 1,
+      currenciesUsed: 1,
+      uniquePeople: 1,
+      maxExpenseParticipants: 2,
+      maxGroupMembers: 2,
+      maxGroupExpenses: 1,
+      tripGroups: 1,
+    })
+    expect(
+      achievements.achievements.find((item) => item.id === "first-group")?.unlocked
+    ).toBe(true)
+    expect(
+      achievements.achievements.find((item) => item.id === "first-expense")?.unlocked
+    ).toBe(true)
   })
 
   it("cleans all group-owned rows, recalculates statistics, and preserves earned achievements", async () => {

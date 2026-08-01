@@ -1,6 +1,10 @@
 import { auth } from "@/lib/auth"
 import { buildProfileStatistics } from "@/lib/statistics"
-import { getUserStatistics } from "@/services/statistics.service"
+import {
+  getCurrentUserStatistics,
+  getHistoricalUserStatistics,
+  mergeHistoricalAndCurrentStatistics,
+} from "@/services/statistics.service"
 import { NextResponse } from "next/server"
 
 export async function GET() {
@@ -9,6 +13,14 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const metrics = await getUserStatistics(session.user.id)
-  return NextResponse.json({ statistics: buildProfileStatistics(metrics) })
+  const [current, storedHistory] = await Promise.all([
+    getCurrentUserStatistics(session.user.id),
+    getHistoricalUserStatistics(session.user.id),
+  ])
+  const lifetime = mergeHistoricalAndCurrentStatistics(storedHistory, current)
+  return NextResponse.json({
+    statistics: buildProfileStatistics(lifetime),
+    lifetime: buildProfileStatistics(lifetime),
+    current: buildProfileStatistics(current),
+  })
 }

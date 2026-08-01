@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db"
 import { Prisma } from "@prisma/client"
 import { getOutstandingDebt } from "@/services/balances.service"
 import type { CreateSettlementInput } from "@/lib/validations/settlement"
+import { recordSettlementHistory } from "@/services/statistics-history.service"
 
 export async function createSettlement(
   userId: string,
@@ -61,6 +62,8 @@ export async function createSettlement(
         metadata: { amount: data.amount, currency: txGroup.currency, toUserName: settlement.toUser.name },
       },
     })
+
+    await recordSettlementHistory(tx, settlement)
 
     await tx.group.update({ where: { id: data.groupId }, data: { updatedAt: new Date() } })
 

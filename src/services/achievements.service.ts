@@ -1,6 +1,10 @@
 import { evaluateAchievements } from "@/lib/achievements"
 import { prisma } from "@/lib/db"
-import { getUserStatistics } from "@/services/statistics.service"
+import {
+  getCurrentUserStatistics,
+  getHistoricalUserStatistics,
+  mergeHistoricalAndCurrentStatistics,
+} from "@/services/statistics.service"
 
 /**
  * Calculates current progress, persists newly unlocked achievements, and then
@@ -8,14 +12,16 @@ import { getUserStatistics } from "@/services/statistics.service"
  * group or expense is later deleted.
  */
 export async function getUserAchievements(userId: string, now = new Date()) {
-  const [metrics, persisted] = await Promise.all([
-    getUserStatistics(userId, now),
+  const [currentMetrics, historicalMetrics, persisted] = await Promise.all([
+    getCurrentUserStatistics(userId, now),
+    getHistoricalUserStatistics(userId, now),
     prisma.userAchievement.findMany({
       where: { userId },
       select: { achievementId: true },
     }),
   ])
 
+  const metrics = mergeHistoricalAndCurrentStatistics(historicalMetrics, currentMetrics)
   const persistedIds = new Set(persisted.map((item) => item.achievementId))
   const current = evaluateAchievements(metrics, persistedIds)
   const newlyUnlocked = current.filter(

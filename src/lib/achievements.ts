@@ -128,10 +128,13 @@ const definitions: AchievementDefinition[] = [
 
 export const ACHIEVEMENT_COUNT = definitions.length
 
-export function evaluateAchievements(metrics: AchievementMetrics): Achievement[] {
+export function evaluateAchievements(
+  metrics: AchievementMetrics,
+  persistedIds: ReadonlySet<string> = new Set()
+): Achievement[] {
   return definitions.map((definition) => {
     const progress = Math.max(0, metrics[definition.metric])
-    const unlocked = progress >= definition.target
+    const unlocked = progress >= definition.target || persistedIds.has(definition.id)
     const hidden = Boolean(definition.hidden)
 
     return {

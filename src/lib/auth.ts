@@ -2,10 +2,10 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { prisma } from "./db"
 import bcrypt from "bcryptjs"
+import authConfig from "./auth.config"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  session: { strategy: "jwt" },
-  pages: { signIn: "/login" },
+  ...authConfig,
   providers: [
     Credentials({
       credentials: {
@@ -31,23 +31,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  callbacks: {
-    jwt({ token, user, trigger, session }) {
-      if (user) {
-        token.id = user.id
-        token.role = (user as { role?: string }).role ?? "USER"
-      }
-      // useSession().update({ name }) → освежаем имя в токене без перелогина
-      if (trigger === "update" && typeof session?.name === "string" && session.name) {
-        token.name = session.name
-      }
-      return token
-    },
-    session({ session, token }) {
-      if (token.id) session.user.id = token.id as string
-      if (typeof token.name === "string") session.user.name = token.name
-      if (token.role) session.user.role = token.role as string
-      return session
-    },
-  },
 })

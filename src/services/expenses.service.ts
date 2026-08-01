@@ -5,12 +5,12 @@ import { getRateToRub } from "@/services/exchange.service"
 import type { CreateExpenseInput } from "@/lib/validations/expense"
 
 const splitInclude = {
-  user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+  user: { select: { id: true, name: true, avatarUrl: true } },
 }
 
 const expenseInclude = {
-  paidBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
-  createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+  paidBy: { select: { id: true, name: true, avatarUrl: true } },
+  createdBy: { select: { id: true, name: true, avatarUrl: true } },
   splits: { include: splitInclude },
   // Расчёты наличными, сделанные в момент этой траты
   settlements: {
@@ -23,6 +23,8 @@ const expenseInclude = {
     },
   },
 }
+
+const MAX_DATABASE_INT = 2_147_483_647
 
 export async function getGroupExpenses(groupId: string, userId: string, page = 1, perPage = 30) {
   const member = await prisma.groupMember.findUnique({
@@ -52,7 +54,7 @@ export async function getExpense(expenseId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId: expense.groupId, userId } },
   })
-  if (!member) return null
+  if (!member?.isActive) return null
   return expense
 }
 
@@ -83,15 +85,48 @@ async function validateExpenseParticipants(
 // factor — множитель «валюта траты → валюта расчёта» (кросс-курс на дату)
 function buildSplitRows(data: CreateExpenseInput, factor: number) {
   const splitResults = calculateSplits(data.amount, data.splitType, data.splits)
-  return splitResults.map((s, i) => ({
-    userId: s.userId,
-    amount: s.amount,
-    amountBase: Math.round(s.amount * factor),
-    percentage:
-      data.splitType === "PERCENTAGE"
-        ? (data.splits[i] as { userId: string; percentage: number }).percentage
-        : undefined,
-  }))
+  assertCashPayments(data, splitResults)
+  return splitResults.map((s, i) => {
+    const amountBase = toDatabaseInt(s.amount * factor)
+    return {
+      userId: s.userId,
+      amount: s.amount,
+      amountBase,
+      percentage:
+        data.splitType === "PERCENTAGE"
+          ? (data.splits[i] as { userId: string; percentage: number }).percentage
+          : undefined,
+    }
+  })
+}
+
+function toDatabaseInt(value: number) {
+  const rounded = Math.round(value)
+  if (!Number.isSafeInteger(rounded) || rounded < 0 || rounded > MAX_DATABASE_INT) {
+    throw new Error("CONVERTED_AMOUNT_TOO_LARGE")
+  }
+  return rounded
+}
+
+function assertCashPayments(
+  data: CreateExpenseInput,
+  splitResults: Array<{ userId: string; amount: number }>
+) {
+  const splitAmounts = new Map(splitResults.map((split) => [split.userId, split.amount]))
+  const paidByUser = new Set<string>()
+
+  for (const payment of data.cashPayments ?? []) {
+    const share = splitAmounts.get(payment.userId)
+    if (
+      payment.userId === data.paidById ||
+      paidByUser.has(payment.userId) ||
+      share == null ||
+      payment.amount > share
+    ) {
+      throw new Error("CASH_PAYMENT_INVALID")
+    }
+    paidByUser.add(payment.userId)
+  }
 }
 
 // Множитель пересчёта из валюты траты в валюту расчёта группы на дату
@@ -143,7 +178,7 @@ export async function createExpense(
         title: data.title,
         amount: data.amount,
         currency: data.currency, // валюта конкретной траты
-        amountBase: Math.round(data.amount * factor), // в валюте расчёта группы
+        amountBase: toDatabaseInt(data.amount * factor), // в валюте расчёта группы
         customRate, // ручной курс или null (курс ЦБ)
         category: data.category,
         splitType: data.splitType,
@@ -172,6 +207,7 @@ export async function createExpense(
         select: { name: true },
       })
       for (const cp of data.cashPayments) {
+        const cashUserName = expense.splits.find((split) => split.userId === cp.userId)?.user.name
         const settlement = await tx.settlement.create({
           data: {
             groupId,
@@ -180,7 +216,7 @@ export async function createExpense(
             toUserId: data.paidById,
             amount: cp.amount,
             currency: data.currency,
-            amountBase: Math.round(cp.amount * factor),
+            amountBase: toDatabaseInt(cp.amount * factor),
             date: new Date(data.date),
             notes: `К расходу «${data.title}»`,
           },
@@ -188,11 +224,18 @@ export async function createExpense(
         await tx.activityLog.create({
           data: {
             groupId,
-            actorId: cp.userId,
+            // actorId is always the authenticated recorder. The participant
+            // who handed over cash is kept separately in metadata.
+            actorId: userId,
             type: "SETTLEMENT_CREATED",
             entityType: "settlement",
             entityId: settlement.id,
-            metadata: { amount: cp.amount, currency: data.currency, toUserName: payer?.name },
+            metadata: {
+              amount: cp.amount,
+              currency: data.currency,
+              toUserName: payer?.name,
+              cashFromUserName: cashUserName,
+            },
           },
         })
       }
@@ -214,7 +257,7 @@ export async function updateExpense(
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId: existing.groupId, userId } },
   })
-  if (!member) throw new Error("FORBIDDEN")
+  if (!member?.isActive) throw new Error("FORBIDDEN")
   // Редактировать может: автор траты, плательщик или админ поездки
   if (
     existing.createdById !== userId &&
@@ -225,6 +268,7 @@ export async function updateExpense(
   }
 
   const settlementCurrency = await validateExpenseParticipants(existing.groupId, userId, data)
+  if (data.cashPayments?.length) throw new Error("CASH_PAYMENTS_CREATE_ONLY")
   const { factor, customRate } = await resolveFactor(data, settlementCurrency)
   const splitRows = buildSplitRows(data, factor)
 
@@ -242,12 +286,66 @@ export async function updateExpense(
     // Re-validate membership inside the transaction (A4 race guard)
     const txGroup = await tx.group.findUnique({
       where: { id: existing.groupId },
-      include: { members: { where: { isActive: true }, select: { userId: true } } },
+      include: {
+        members: {
+          where: { isActive: true },
+          select: { userId: true, role: true },
+        },
+      },
     })
     if (!txGroup) throw new Error("NOT_FOUND")
     const txIds = new Set(txGroup.members.map((m) => m.userId))
+    const txMember = txGroup.members.find((groupMember) => groupMember.userId === userId)
+    if (!txMember) throw new Error("FORBIDDEN")
+
+    const txExisting = await tx.expense.findUnique({
+      where: { id: expenseId },
+      include: {
+        settlements: {
+          select: { id: true, fromUserId: true, amount: true },
+        },
+      },
+    })
+    if (!txExisting || txExisting.groupId !== existing.groupId) throw new Error("NOT_FOUND")
+    if (
+      txExisting.createdById !== userId &&
+      txExisting.paidById !== userId &&
+      txMember.role !== "ADMIN"
+    ) {
+      throw new Error("FORBIDDEN")
+    }
     if (!txIds.has(data.paidById)) throw new Error("PAYER_NOT_MEMBER")
     for (const s of data.splits) if (!txIds.has(s.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
+
+    const splitAmounts = new Map(splitRows.map((split) => [split.userId, split.amount]))
+    const cashByUser = new Map<string, number>()
+    for (const settlement of txExisting.settlements) {
+      cashByUser.set(
+        settlement.fromUserId,
+        (cashByUser.get(settlement.fromUserId) ?? 0) + settlement.amount
+      )
+    }
+    for (const [cashUserId, cashAmount] of cashByUser) {
+      const share = splitAmounts.get(cashUserId)
+      if (cashUserId === data.paidById || share == null || cashAmount > share) {
+        throw new Error("CASH_PAYMENT_INVALID")
+      }
+    }
+
+    // Наличные являются частью расхода: при исправлении плательщика, валюты,
+    // курса или даты связанные расчёты должны измениться вместе с ним.
+    for (const settlement of txExisting.settlements) {
+      await tx.settlement.update({
+        where: { id: settlement.id },
+        data: {
+          toUserId: data.paidById,
+          currency: data.currency,
+          amountBase: toDatabaseInt(settlement.amount * factor),
+          date: new Date(data.date),
+          notes: `К расходу «${data.title}»`,
+        },
+      })
+    }
 
     // полностью пересобираем split-строки
     await tx.expenseSplit.deleteMany({ where: { expenseId } })
@@ -258,7 +356,7 @@ export async function updateExpense(
         title: data.title,
         amount: data.amount,
         currency: data.currency,
-        amountBase: Math.round(data.amount * factor),
+        amountBase: toDatabaseInt(data.amount * factor),
         customRate,
         category: data.category,
         splitType: data.splitType,
@@ -284,24 +382,25 @@ export async function updateExpense(
         },
       },
     })
+    await tx.group.update({ where: { id: existing.groupId }, data: { updatedAt: new Date() } })
     return expense
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 export async function deleteExpense(expenseId: string, userId: string) {
-  const expense = await prisma.expense.findUnique({ where: { id: expenseId } })
-  if (!expense) throw new Error("NOT_FOUND")
+  await prisma.$transaction(async (tx) => {
+    const expense = await tx.expense.findUnique({ where: { id: expenseId } })
+    if (!expense) throw new Error("NOT_FOUND")
 
-  const member = await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId: expense.groupId, userId } },
-  })
-  if (!member) throw new Error("FORBIDDEN")
-  if (expense.createdById !== userId && member.role !== "ADMIN") {
-    throw new Error("FORBIDDEN")
-  }
+    const member = await tx.groupMember.findUnique({
+      where: { groupId_userId: { groupId: expense.groupId, userId } },
+    })
+    if (!member?.isActive) throw new Error("FORBIDDEN")
+    if (expense.createdById !== userId && member.role !== "ADMIN") {
+      throw new Error("FORBIDDEN")
+    }
 
-  await prisma.$transaction([
-    prisma.activityLog.create({
+    await tx.activityLog.create({
       data: {
         groupId: expense.groupId,
         actorId: userId,
@@ -310,7 +409,8 @@ export async function deleteExpense(expenseId: string, userId: string) {
         entityId: expense.id,
         metadata: { title: expense.title, amount: expense.amount, currency: expense.currency },
       },
-    }),
-    prisma.expense.delete({ where: { id: expenseId } }),
-  ])
+    })
+    await tx.expense.delete({ where: { id: expenseId } })
+    await tx.group.update({ where: { id: expense.groupId }, data: { updatedAt: new Date() } })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }

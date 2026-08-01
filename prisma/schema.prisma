@@ -34,8 +34,24 @@ model User {
   friendsReceived  Friendship[]   @relation("FriendAddressee")
   invitesCreated   GroupInvite[]  @relation("InviteCreator")
   feedbacks        Feedback[]
+  achievements     UserAchievement[]
 
   @@map("users")
+}
+
+// Полученные ачивки хранятся отдельно от текущих статистических метрик.
+// Поэтому уже открытая награда не пропадает после удаления исходных данных.
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([achievementId])
+  @@map("user_achievements")
 }
 
 model Feedback {
@@ -86,6 +102,7 @@ model Group {
   activities  ActivityLog[]
   invites     GroupInvite[]
 
+  @@index([createdById])
   @@map("groups")
 }
 
@@ -149,6 +166,7 @@ model Expense {
 
   @@index([groupId, date(sort: Desc)])
   @@index([paidById])
+  @@index([createdById])
   @@map("expenses")
 }
 
@@ -171,6 +189,7 @@ model ExpenseSplit {
   user    User    @relation(fields: [userId], references: [id])
 
   @@unique([expenseId, userId])
+  @@index([userId])
   @@map("expense_splits")
 }
 
@@ -189,13 +208,14 @@ model Settlement {
   createdAt DateTime @default(now())
 
   group    Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  expense  Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  expense  Expense? @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   fromUser User     @relation("SettlementFrom", fields: [fromUserId], references: [id])
   toUser   User     @relation("SettlementTo", fields: [toUserId], references: [id])
 
   @@index([groupId, date(sort: Desc)])
   @@index([expenseId])
   @@index([fromUserId, toUserId])
+  @@index([toUserId])
   @@map("settlements")
 }
 
@@ -210,7 +230,7 @@ model ActivityLog {
 
   createdAt DateTime @default(now())
 
-  group Group? @relation(fields: [groupId], references: [id])
+  group Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
   actor User   @relation(fields: [actorId], references: [id])
 
   @@index([groupId, createdAt(sort: Desc)])
@@ -241,6 +261,7 @@ model GroupInvite {
   createdBy User  @relation("InviteCreator", fields: [createdById], references: [id])
 
   @@index([groupId])
+  @@index([createdById])
   @@map("group_invites")
 }
 

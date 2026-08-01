@@ -28,6 +28,7 @@ type ActivityItem = {
     amount?: number
     currency?: string
     toUserName?: string
+    cashFromUserName?: string
     memberName?: string
     selfLeft?: boolean
     viaInvite?: boolean
@@ -213,7 +214,9 @@ function activityText(a: ActivityItem): string {
     case "EXPENSE_DELETED":
       return `удалил(а) расход «${m.title}»`
     case "SETTLEMENT_CREATED":
-      return `рассчитался(-ась) с ${m.toUserName}`
+      return m.cashFromUserName
+        ? `указал(а), что ${m.cashFromUserName} рассчитался(-ась) наличными с ${m.toUserName}`
+        : `рассчитался(-ась) с ${m.toUserName}`
     case "SETTLEMENTS_RESET":
       return m.removed ? `сбросил(а) расчёты (${m.removed})` : "сбросил(а) расчёты"
     case "MEMBER_ADDED":

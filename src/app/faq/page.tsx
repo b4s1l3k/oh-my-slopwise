@@ -6,7 +6,7 @@ import { PublicHeader } from "@/components/layout/public-header"
 
 export const metadata: Metadata = {
   title: "Частые вопросы — SLOPwise",
-  description: "Ответы на частые вопросы о группах, расходах, расчётах и ачивках в SLOPwise",
+  description: "Ответы на частые вопросы о группах, расходах, расчётах, статистике и ачивках в SLOPwise",
 }
 
 export default async function FaqPage() {

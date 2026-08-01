@@ -97,4 +97,17 @@ describe("evaluateAchievements", () => {
       unlocked: true,
     })
   })
+
+  it("keeps a persisted achievement unlocked after current progress decreases", () => {
+    const achievement = evaluateAchievements(
+      emptyMetrics,
+      new Set(["first-group"])
+    ).find((item) => item.id === "first-group")
+
+    expect(achievement).toMatchObject({
+      unlocked: true,
+      progress: 0,
+      target: 1,
+    })
+  })
 })

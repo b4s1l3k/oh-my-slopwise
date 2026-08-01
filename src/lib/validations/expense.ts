@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { SUPPORTED_CURRENCIES } from "@/lib/currencies"
+import { calculateSplits } from "@/lib/utils/split-calculator"
 
 const splitParticipant = z.object({
   userId: z.string().min(1),
@@ -89,16 +90,38 @@ export const createExpenseSchema = z
       })
     }
     if (data.cashPayments) {
-      const totalCash = data.cashPayments.reduce((s, cp) => s + cp.amount, 0)
-      if (totalCash >= data.amount) {
+      const cashUserIds = data.cashPayments.map((payment) => payment.userId)
+      if (new Set(cashUserIds).size !== cashUserIds.length) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "Сумма наличных платежей не может превышать сумму расхода",
+          message: "Наличный платёж участника указан более одного раза",
           path: ["cashPayments"],
         })
       }
-    }
 
+      const splitAmounts = new Map(
+        calculateSplits(data.amount, data.splitType, data.splits).map((split) => [
+          split.userId,
+          split.amount,
+        ])
+      )
+      data.cashPayments.forEach((payment, index) => {
+        const share = splitAmounts.get(payment.userId)
+        if (share == null) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Наличный платёж можно указать только для участника расхода",
+            path: ["cashPayments", index, "userId"],
+          })
+        } else if (Number.isSafeInteger(share) && payment.amount > share) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Наличный платёж не может быть больше доли участника",
+            path: ["cashPayments", index, "amount"],
+          })
+        }
+      })
+    }
   })
 
 export type CreateExpenseInput = z.infer<typeof createExpenseSchema>

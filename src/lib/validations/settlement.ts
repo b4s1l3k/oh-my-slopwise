@@ -3,7 +3,11 @@ import { z } from "zod"
 export const createSettlementSchema = z.object({
   groupId: z.string().min(1, "Укажите группу"),
   toUserId: z.string().min(1, "Укажите получателя"),
-  amount: z.number().int().positive("Сумма должна быть больше 0"),
+  amount: z
+    .number()
+    .int()
+    .positive("Сумма должна быть больше 0")
+    .max(2_000_000_000, "Слишком большая сумма"),
   currency: z.string().length(3).default("RUB"),
   date: z.string().refine((d) => !isNaN(new Date(d).getTime()), { message: "Некорректная дата" }),
   notes: z.string().max(500).optional(),

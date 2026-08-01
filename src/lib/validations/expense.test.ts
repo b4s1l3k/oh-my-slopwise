@@ -34,15 +34,40 @@ describe("createExpenseSchema — cashPayments", () => {
     expect(errs.some((e) => e.path === "cashPayments")).toBe(true)
   })
 
-  it("сумма наличных не может быть >= суммы расхода", () => {
+  it("наличный платёж не может быть больше доли участника", () => {
     const errs = issues({ ...base, cashPayments: [{ userId: "bob", amount: 240000 }] })
+    expect(errs.some((e) => e.path === "cashPayments.0.amount")).toBe(true)
+  })
+
+  it("наличный платёж в пределах доли допустим", () => {
+    const r = createExpenseSchema.safeParse({
+      ...base,
+      cashPayments: [{ userId: "bob", amount: 120000 }],
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it("наличный платёж разрешён только участнику расхода", () => {
+    const errs = issues({ ...base, cashPayments: [{ userId: "carol", amount: 10000 }] })
+    expect(errs.some((e) => e.path === "cashPayments.0.userId")).toBe(true)
+  })
+
+  it("одного участника нельзя указать в наличных дважды", () => {
+    const errs = issues({
+      ...base,
+      cashPayments: [
+        { userId: "bob", amount: 10000 },
+        { userId: "bob", amount: 10000 },
+      ],
+    })
     expect(errs.some((e) => e.path === "cashPayments")).toBe(true)
   })
 
-  it("сумма наличных чуть меньше расхода — допустимо", () => {
+  it("весь расход можно вернуть наличными, если плательщик не участвует в разбивке", () => {
     const r = createExpenseSchema.safeParse({
       ...base,
-      cashPayments: [{ userId: "bob", amount: 239999 }],
+      splits: [{ userId: "bob" }],
+      cashPayments: [{ userId: "bob", amount: base.amount }],
     })
     expect(r.success).toBe(true)
   })

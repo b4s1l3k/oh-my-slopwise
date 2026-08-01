@@ -44,18 +44,31 @@ async function fetchCbrRates(day: Date): Promise<Record<string, number>> {
   return rates
 }
 
-const RATE_TTL_DAYS = 14
+async function getNearestCachedRate(currency: string, day: Date) {
+  const [before, after] = await Promise.all([
+    prisma.exchangeRate.findFirst({
+      where: { currency, date: { lte: day } },
+      orderBy: { date: "desc" },
+    }),
+    prisma.exchangeRate.findFirst({
+      where: { currency, date: { gte: day } },
+      orderBy: { date: "asc" },
+    }),
+  ])
 
-function pruneOldRates() {
-  const cutoff = new Date()
-  cutoff.setUTCDate(cutoff.getUTCDate() - RATE_TTL_DAYS)
-  prisma.exchangeRate.deleteMany({ where: { date: { lt: cutoff } } }).catch(() => {})
+  if (!before) return after?.rate ?? null
+  if (!after) return before.rate
+
+  const beforeDistance = day.getTime() - before.date.getTime()
+  const afterDistance = after.date.getTime() - day.getTime()
+  return beforeDistance <= afterDistance ? before.rate : after.rate
 }
 
 /**
  * Курс: сколько рублей стоит 1 единица `currency` на дату `date`.
- * Кэшируется в БД. При недоступности ЦБ используется ближайший известный курс.
- * Записи старше 14 дней удаляются автоматически при каждой записи новых курсов.
+ * Кэшируется в БД. При недоступности ЦБ используется ближайший к дате
+ * известный курс. Исторические значения не удаляются: ЦБ их не меняет, а они
+ * нужны для повторного редактирования старых расходов.
  */
 export async function getRateToRub(currency: string, date: Date): Promise<number> {
   if (currency === BASE_CURRENCY) return 1
@@ -74,17 +87,11 @@ export async function getRateToRub(currency: string, date: Date): Promise<number
       data: Object.entries(rates).map(([cur, rate]) => ({ date: day, currency: cur, rate })),
       skipDuplicates: true,
     })
-    pruneOldRates()
     if (rates[currency] != null) return rates[currency]
     throw new Error("RATE_UNAVAILABLE")
   } catch {
-    // fallback: ближайший известный курс этой валюты
-    // Индекс [currency, date DESC] покрывает этот запрос
-    const nearest = await prisma.exchangeRate.findFirst({
-      where: { currency },
-      orderBy: { date: "desc" },
-    })
-    if (nearest) return nearest.rate
+    const nearest = await getNearestCachedRate(currency, day)
+    if (nearest != null) return nearest
     throw new Error("RATE_UNAVAILABLE")
   }
 }

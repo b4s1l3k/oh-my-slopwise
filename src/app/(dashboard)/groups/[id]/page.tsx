@@ -26,7 +26,7 @@ type Member = {
   bankName: string | null
   payeeAccount: string | null
   user: {
-    id: string; name: string; email: string; avatarUrl: string | null
+    id: string; name: string; avatarUrl: string | null
     payeeName?: string | null; bankName?: string | null; payeeAccount?: string | null
   }
 }

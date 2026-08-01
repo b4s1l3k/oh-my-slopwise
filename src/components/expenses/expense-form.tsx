@@ -7,12 +7,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2 } from "lucide-react"
-import { parseMoneyInput } from "@/lib/utils/format"
+import { parseMoneyInput, toLocalDateInputValue } from "@/lib/utils/format"
 import { useToast } from "@/components/ui/toast"
 import { CURRENCY_META, isSupportedCurrency } from "@/lib/currencies"
 import { CurrencySelect } from "@/components/ui/currency-select"
 
-type Member = { id: string; name: string; email: string; avatarUrl: string | null }
+type Member = { id: string; name: string; avatarUrl: string | null }
 type SplitType = "EQUAL" | "EXACT" | "PERCENTAGE"
 
 // Данные для режима редактирования
@@ -57,7 +57,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
   )
   const [splitType, setSplitType] = useState<SplitType>(expense?.splitType ?? "EQUAL")
   const [date, setDate] = useState(
-    (expense?.date ?? new Date().toISOString()).split("T")[0]
+    toLocalDateInputValue(expense?.date)
   )
   const [notes, setNotes] = useState(expense?.notes ?? "")
   const [selectedIds, setSelectedIds] = useState<string[]>(

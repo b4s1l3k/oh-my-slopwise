@@ -12,13 +12,18 @@ async function assertAdmin(groupId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
   })
-  if (!member || member.role !== "ADMIN") throw new Error("FORBIDDEN")
+  if (!member?.isActive || member.role !== "ADMIN") throw new Error("FORBIDDEN")
 }
 
 // Возвращает активную ссылку группы (создаёт, если нет) — доступно всем участникам
 export async function getOrCreateInvite(groupId: string, userId: string) {
   await assertMember(groupId, userId)
   return prisma.$transaction(async (tx) => {
+    const member = await tx.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    })
+    if (!member?.isActive) throw new Error("FORBIDDEN")
+
     const existing = await tx.groupInvite.findFirst({
       where: { groupId, revoked: false },
       orderBy: { createdAt: "desc" },
@@ -33,9 +38,16 @@ export async function getOrCreateInvite(groupId: string, userId: string) {
 // Отзывает активную ссылку (старая перестаёт работать)
 export async function revokeInvite(groupId: string, userId: string) {
   await assertAdmin(groupId, userId)
-  await prisma.groupInvite.updateMany({
-    where: { groupId, revoked: false },
-    data: { revoked: true },
+  await prisma.$transaction(async (tx) => {
+    const member = await tx.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    })
+    if (!member?.isActive || member.role !== "ADMIN") throw new Error("FORBIDDEN")
+
+    await tx.groupInvite.updateMany({
+      where: { groupId, revoked: false },
+      data: { revoked: true },
+    })
   })
 }
 
@@ -78,7 +90,8 @@ export async function acceptInvite(token: string, userId: string) {
     await tx.groupMember.upsert({
       where: { groupId_userId: { groupId: invite.groupId, userId } },
       create: { groupId: invite.groupId, userId, role: "MEMBER" },
-      update: { isActive: true },
+      // Повторное вступление никогда не должно возвращать старые привилегии.
+      update: { isActive: true, role: "MEMBER" },
     })
     await tx.activityLog.create({
       data: {
@@ -90,6 +103,7 @@ export async function acceptInvite(token: string, userId: string) {
         metadata: { memberName: user?.name, viaInvite: true },
       },
     })
+    await tx.group.update({ where: { id: invite.groupId }, data: { updatedAt: new Date() } })
     return { groupId: invite.groupId }
   })
 }

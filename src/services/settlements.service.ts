@@ -20,6 +20,15 @@ export async function createSettlement(
   if (!memberIds.has(data.toUserId)) throw new Error("RECIPIENT_NOT_MEMBER")
 
   return prisma.$transaction(async (tx) => {
+    const txGroup = await tx.group.findUnique({
+      where: { id: data.groupId },
+      include: { members: { where: { isActive: true }, select: { userId: true } } },
+    })
+    if (!txGroup) throw new Error("NOT_FOUND")
+    const txMemberIds = new Set(txGroup.members.map((member) => member.userId))
+    if (!txMemberIds.has(userId)) throw new Error("FORBIDDEN")
+    if (!txMemberIds.has(data.toUserId)) throw new Error("RECIPIENT_NOT_MEMBER")
+
     // Debt check inside the transaction prevents A1 race (two concurrent settlements exceeding debt)
     const outstanding = await getOutstandingDebt(data.groupId, userId, data.toUserId, tx)
     if (outstanding <= 0) throw new Error("NO_DEBT")
@@ -31,14 +40,14 @@ export async function createSettlement(
         fromUserId: userId,
         toUserId: data.toUserId,
         amount: data.amount,
-        currency: group.currency, // расчёт всегда в валюте расчёта группы
+        currency: txGroup.currency, // расчёт всегда в валюте расчёта группы
         amountBase: data.amount, // уже в валюте расчёта
         date: new Date(data.date),
         notes: data.notes,
       },
       include: {
-        fromUser: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        toUser: { select: { id: true, name: true, email: true, avatarUrl: true } },
+        fromUser: { select: { id: true, name: true, avatarUrl: true } },
+        toUser: { select: { id: true, name: true, avatarUrl: true } },
       },
     })
 
@@ -49,9 +58,11 @@ export async function createSettlement(
         type: "SETTLEMENT_CREATED",
         entityType: "settlement",
         entityId: settlement.id,
-        metadata: { amount: data.amount, currency: group.currency, toUserName: settlement.toUser.name },
+        metadata: { amount: data.amount, currency: txGroup.currency, toUserName: settlement.toUser.name },
       },
     })
+
+    await tx.group.update({ where: { id: data.groupId }, data: { updatedAt: new Date() } })
 
     return settlement
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
@@ -68,6 +79,11 @@ export async function resetSettlements(groupId: string, userId: string) {
   if (!member?.isActive || member.role !== "ADMIN") throw new Error("FORBIDDEN")
 
   return prisma.$transaction(async (tx) => {
+    const txMember = await tx.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    })
+    if (!txMember?.isActive || txMember.role !== "ADMIN") throw new Error("FORBIDDEN")
+
     const { count } = await tx.settlement.deleteMany({ where: { groupId, expenseId: null } })
     if (count > 0) {
       await tx.activityLog.create({
@@ -80,6 +96,9 @@ export async function resetSettlements(groupId: string, userId: string) {
           metadata: { removed: count },
         },
       })
+    }
+    if (count > 0) {
+      await tx.group.update({ where: { id: groupId }, data: { updatedAt: new Date() } })
     }
     return { removed: count }
   })
@@ -94,8 +113,8 @@ export async function getGroupSettlements(groupId: string, userId: string) {
   return prisma.settlement.findMany({
     where: { groupId },
     include: {
-      fromUser: { select: { id: true, name: true, email: true, avatarUrl: true } },
-      toUser: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      fromUser: { select: { id: true, name: true, avatarUrl: true } },
+      toUser: { select: { id: true, name: true, avatarUrl: true } },
     },
     orderBy: { date: "desc" },
   })

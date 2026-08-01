@@ -20,7 +20,7 @@ type Member = {
   payeeName: string | null
   bankName: string | null
   payeeAccount: string | null
-  user: { id: string; name: string; email: string; avatarUrl: string | null }
+  user: { id: string; name: string; avatarUrl: string | null }
 }
 type UserResult = { id: string; name: string; avatarUrl: string | null }
 
@@ -408,19 +408,21 @@ export default function GroupSettingsPage({ params }: { params: Promise<{ id: st
           <CardTitle className="text-base text-destructive">Действия</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Button
-            variant="outline"
-            className="w-full justify-start"
-            disabled={leave.isPending}
-            onClick={() => {
-              if (confirm("Выйти из группы? Это возможно только при нулевом балансе.")) {
-                leave.mutate()
-              }
-            }}
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Выйти из группы
-          </Button>
+          {!isAdmin && (
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              disabled={leave.isPending}
+              onClick={() => {
+                if (confirm("Выйти из группы? Это возможно, только если у вас нет долгов.")) {
+                  leave.mutate()
+                }
+              }}
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Выйти из группы
+            </Button>
+          )}
 
           {isAdmin && (
             <Button

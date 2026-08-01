@@ -25,6 +25,13 @@ export function formatDateTime(date: string | Date): string {
   }).format(new Date(date))
 }
 
+/** Formats a date for `<input type="date">` in the user's local timezone. */
+export function toLocalDateInputValue(date: string | Date = new Date()): string {
+  const value = new Date(date)
+  const localTime = value.getTime() - value.getTimezoneOffset() * 60_000
+  return new Date(localTime).toISOString().slice(0, 10)
+}
+
 export function getInitials(name: string): string {
   return name
     .split(" ")

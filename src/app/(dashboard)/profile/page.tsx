@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/ui/toast"
 import { AchievementsSection } from "@/components/profile/achievements-section"
+import { StatisticsSection } from "@/components/profile/statistics-section"
 import { Loader2, LogOut } from "lucide-react"
 
 type Profile = {
@@ -72,6 +73,7 @@ export default function ProfilePage() {
       qc.invalidateQueries({ queryKey: ["balances"] })
       qc.invalidateQueries({ queryKey: ["overview"] })
       qc.invalidateQueries({ queryKey: ["achievements"] })
+      qc.invalidateQueries({ queryKey: ["statistics"] })
       toast({ title: "Профиль сохранён" })
     },
     onError: (e) => toast({ title: e.message, variant: "destructive" }),
@@ -89,6 +91,8 @@ export default function ProfilePage() {
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold">Профиль</h1>
+
+      <StatisticsSection />
 
       <AchievementsSection />
 

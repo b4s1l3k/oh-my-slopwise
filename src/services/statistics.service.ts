@@ -1,4 +1,4 @@
-import type { AchievementMetrics } from "@/lib/achievements"
+import { isCoffeeExpense, type AchievementMetrics } from "@/lib/achievements"
 import { prisma } from "@/lib/db"
 import { STATISTIC_KIND } from "@/services/statistics-history.service"
 import type { UserMoneyStatistics } from "@/lib/statistics"
@@ -21,7 +21,7 @@ export async function getCurrentUserStatistics(userId: string, now = new Date())
     user,
     memberships,
     createdExpenses,
-    expensesPaid,
+    paidExpenses,
     expensesParticipated,
     settlementsSent,
     settlementsReceived,
@@ -68,7 +68,10 @@ export async function getCurrentUserStatistics(userId: string, now = new Date())
         splits: { select: { userId: true } },
       },
     }),
-    prisma.expense.count({ where: { paidById: userId } }),
+    prisma.expense.findMany({
+      where: { paidById: userId },
+      select: { title: true, category: true },
+    }),
     prisma.expenseSplit.count({ where: { userId } }),
     prisma.settlement.count({ where: { fromUserId: userId } }),
     prisma.settlement.count({ where: { toUserId: userId } }),
@@ -117,7 +120,10 @@ export async function getCurrentUserStatistics(userId: string, now = new Date())
     invitesCreated,
     expensesCreated: createdExpenses.length,
     expensesParticipated,
-    expensesPaid,
+    expensesPaid: paidExpenses.length,
+    coffeeExpensesPaid: paidExpenses.filter((expense) =>
+      isCoffeeExpense(expense.title, expense.category)
+    ).length,
     createdForOthers: createdExpenses.filter((expense) => expense.paidById !== userId).length,
     uniquePeople: coMembers.size,
     maxExpenseParticipants: maxBy(createdExpenses, (expense) => expense.splits.length),
@@ -188,6 +194,7 @@ export async function getHistoricalUserStatistics(
     expensesCreated: count(STATISTIC_KIND.expenseCreated),
     expensesParticipated: count(STATISTIC_KIND.expenseParticipated),
     expensesPaid: count(STATISTIC_KIND.expensePaid),
+    coffeeExpensesPaid: count(STATISTIC_KIND.coffeePaid),
     createdForOthers: count(STATISTIC_KIND.createdForOther),
     uniquePeople: count(STATISTIC_KIND.peer),
     maxExpenseParticipants: maximum(STATISTIC_KIND.expenseParticipantsRecord),

@@ -11,6 +11,7 @@ const metrics: AchievementMetrics = {
   expensesCreated: 20,
   expensesParticipated: 31,
   expensesPaid: 14,
+  coffeeExpensesPaid: 2,
   createdForOthers: 4,
   uniquePeople: 9,
   maxExpenseParticipants: 6,

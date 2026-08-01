@@ -12,8 +12,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { MoneyTotal, ProfileStatistics } from "@/lib/statistics"
-import { formatMoney } from "@/lib/utils/format"
+import type { ProfileStatistics } from "@/lib/statistics"
 
 type StatisticsResponse = {
   statistics: ProfileStatistics
@@ -34,32 +33,6 @@ function StatValue({ label, value, icon: Icon }: {
     <div className="rounded-xl border bg-muted/20 p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-2xl font-bold tabular-nums">{formatNumber(value)}</p>
-        <div className="rounded-lg bg-primary/10 p-2 text-primary">
-          <Icon className="h-4 w-4" aria-hidden="true" />
-        </div>
-      </div>
-      <p className="mt-1 text-sm text-muted-foreground">{label}</p>
-    </div>
-  )
-}
-
-function MoneyValue({ label, totals, icon: Icon }: {
-  label: string
-  totals: MoneyTotal[]
-  icon: LucideIcon
-}) {
-  return (
-    <div className="rounded-xl border bg-muted/20 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          {totals.length > 0 ? totals.map((total) => (
-            <p key={total.currency} className="text-xl font-bold tabular-nums">
-              {formatMoney(total.amount, total.currency)}
-            </p>
-          )) : (
-            <p className="text-xl font-bold tabular-nums">0</p>
-          )}
-        </div>
         <div className="rounded-lg bg-primary/10 p-2 text-primary">
           <Icon className="h-4 w-4" aria-hidden="true" />
         </div>
@@ -167,17 +140,6 @@ export function StatisticsSection() {
             icon={Users}
           />
         </div>
-
-        <section className="space-y-3" aria-labelledby="statistics-money">
-          <div>
-            <h3 id="statistics-money" className="text-sm font-semibold">Деньги</h3>
-            <p className="text-xs text-muted-foreground">Суммы в разных валютах показаны отдельно</p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <MoneyValue label="Вы потратили" totals={statistics.money.spent} icon={Wallet} />
-            <MoneyValue label="Вам вернули" totals={statistics.money.returned} icon={Handshake} />
-          </div>
-        </section>
 
         <div className="grid gap-6 sm:grid-cols-2">
           <section className="space-y-3" aria-labelledby="statistics-splits">

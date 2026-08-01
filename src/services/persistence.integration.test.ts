@@ -184,6 +184,53 @@ describeDatabase("achievement persistence and group deletion", () => {
     })
   })
 
+  it("unlocks and persists the hidden coffee achievement for the expense payer", async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: `${testPrefix}-coffee-payer@example.com`,
+        name: "Coffee Payer",
+        passwordHash: "test-only",
+      },
+    })
+    const group = await createGroup(user.id, {
+      name: "Coffee group",
+      type: "OTHER",
+      currency: "RUB",
+      memberIds: [],
+    })
+    const expense = await createExpense(group.id, user.id, {
+      title: "Капучино с корицей",
+      amount: 35_000,
+      currency: "RUB",
+      date: "2026-08-01T12:00:00.000Z",
+      paidById: user.id,
+      splitType: "EQUAL",
+      splits: [{ userId: user.id }],
+    })
+
+    const achievements = await getUserAchievements(user.id)
+    expect(
+      achievements.achievements.find((item) => item.id === "secret-coffee-path")
+    ).toMatchObject({
+      title: "Это путь. К кофе",
+      unlocked: true,
+      hidden: true,
+    })
+    expect(
+      await prisma.userAchievement.count({
+        where: { userId: user.id, achievementId: "secret-coffee-path" },
+      })
+    ).toBe(1)
+
+    await deleteExpense(expense.id, user.id)
+    const afterDeletion = await getUserAchievements(user.id)
+    expect(
+      afterDeletion.achievements.find((item) => item.id === "secret-coffee-path")?.unlocked
+    ).toBe(true)
+
+    await deleteGroup(group.id, user.id)
+  })
+
   it("cleans all group-owned rows, recalculates statistics, and preserves earned achievements", async () => {
     const now = new Date("2026-08-01T12:00:00.000Z")
     const [admin, member] = await Promise.all([

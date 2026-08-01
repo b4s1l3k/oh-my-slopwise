@@ -15,6 +15,7 @@ export type AchievementMetrics = {
   expensesCreated: number
   expensesParticipated: number
   expensesPaid: number
+  coffeeExpensesPaid: number
   createdForOthers: number
   uniquePeople: number
   maxExpenseParticipants: number
@@ -129,20 +130,27 @@ const definitions: AchievementDefinition[] = [
   // до открытия возвращаются клиенту без названия и условия.
   { id: "secret-wizard-accountant", title: "Ты бухгалтер, Гарри", description: "Добавить первую трату и поступить в Хогвартс финансовой отчётности", category: "START", icon: "sparkles", metric: "expensesCreated", target: 1 },
   { id: "secret-force-balance", title: "Да пребудет с тобой баланс", description: "Зафиксировать первый расчёт и восстановить равновесие в далёкой-далёкой группе", category: "SETTLEMENTS", icon: "star", metric: "settlementsSent", target: 1 },
-  { id: "secret-not-the-debts", title: "Это не те долги, которые вы ищете", description: "Зафиксировать 10 расчётов, применив бухгалтерский трюк джедая", category: "SETTLEMENTS", icon: "handshake", metric: "settlementsSent", target: 10, hidden: true },
+  { id: "secret-not-the-debts", title: "Это не те долги, которые вы ищете", description: "Зафиксировать 10 расчётов, применив бухгалтерский трюк джедая", category: "SETTLEMENTS", icon: "handshake", metric: "settlementsSent", target: 10 },
   { id: "secret-expensium-leviosa", title: "Расходиум Левиоса", description: "Впервые разделить трату по процентам. Ударение — на баланс", category: "MASTERY", icon: "sparkles", metric: "percentageSplits", target: 1 },
-  { id: "secret-one-does-not-simply", title: "Нельзя просто так взять и разделить чек", description: "Использовать все три способа деления и дойти до Мордора бухгалтерии", category: "MASTERY", icon: "shield", metric: "splitMethodsUsed", target: 3, hidden: true },
-  { id: "secret-fellowship", title: "Братство общего чека", description: "Собрать группу из 9 участников. Один чек, чтобы править всеми", category: "TEAM", icon: "users-round", metric: "maxGroupMembers", target: 9, hidden: true },
-  { id: "secret-i-am-your-payer", title: "Я твой плательщик", description: "Оплатить 50 общих трат и признать финансовое родство", category: "ACTIVITY", icon: "wallet", metric: "expensesPaid", target: 50, hidden: true },
+  { id: "secret-one-does-not-simply", title: "Нельзя просто так взять и разделить чек", description: "Использовать все три способа деления и дойти до Мордора бухгалтерии", category: "MASTERY", icon: "shield", metric: "splitMethodsUsed", target: 3 },
+  { id: "secret-fellowship", title: "Братство общего чека", description: "Собрать группу из 9 участников. Один чек, чтобы править всеми", category: "TEAM", icon: "users-round", metric: "maxGroupMembers", target: 9 },
+  { id: "secret-i-am-your-payer", title: "Я твой плательщик", description: "Оплатить 50 общих трат и признать финансовое родство", category: "ACTIVITY", icon: "wallet", metric: "expensesPaid", target: 50 },
   { id: "secret-red-rate", title: "Ты выбрал красную таблетку курса", description: "Указать собственный курс и увидеть, насколько глубока кроличья нора конвертации", category: "MASTERY", icon: "badge-dollar", metric: "customRates", target: 1 },
   { id: "secret-toss-a-coin", title: "Заплатите бухгалтеру чеканной монетой", description: "Поучаствовать в тратах в 5 валютах. О-о-о, совместный бюджет", category: "MASTERY", icon: "globe", metric: "currenciesUsed", target: 5 },
   { id: "secret-winter-is-coming", title: "Зима близко. Чеки уже здесь", description: "Состоять в группе со 100 тратами и пережить финансовую зиму", category: "GROUPS", icon: "history", metric: "maxGroupExpenses", target: 100 },
-  { id: "secret-after-all-this-time", title: "После стольких трат? Всегда", description: "Пользоваться приложением целый год и не отречься от общего чека", category: "ACTIVITY", icon: "calendar", metric: "accountAgeDays", target: 365, hidden: true },
-  { id: "secret-my-precious", title: "Моя прелесть… это чужой чек", description: "Занести 25 трат за других плательщиков и не отдать бухгалтерское кольцо", category: "TEAM", icon: "crown", metric: "createdForOthers", target: 25, hidden: true },
+  { id: "secret-after-all-this-time", title: "После стольких трат? Всегда", description: "Пользоваться приложением целый год и не отречься от общего чека", category: "ACTIVITY", icon: "calendar", metric: "accountAgeDays", target: 365 },
+  { id: "secret-my-precious", title: "Моя прелесть… это чужой чек", description: "Занести 25 трат за других плательщиков и не отдать бухгалтерское кольцо", category: "TEAM", icon: "crown", metric: "createdForOthers", target: 25 },
   { id: "secret-portal", title: "Портал открыт. Кто будет платить?", description: "Создать 10 приглашений и собрать межпространственный совет должников", category: "GROUPS", icon: "user-plus", metric: "invitesCreated", target: 10 },
-  { id: "secret-han-cash", title: "Хан Наличка стрелял первым", description: "Учесть 10 наличных расчётов до того, как прилетит перевод", category: "SETTLEMENTS", icon: "banknote", metric: "cashSettlements", target: 10, hidden: true },
-  { id: "secret-multiverse", title: "Доктор Стрэндж и мультивселенная расходов", description: "Одновременно состоять в 10 активных группах и не потеряться между счетами", category: "GROUPS", icon: "folders", metric: "activeGroups", target: 10, hidden: true },
+  { id: "secret-han-cash", title: "Хан Наличка стрелял первым", description: "Учесть 10 наличных расчётов до того, как прилетит перевод", category: "SETTLEMENTS", icon: "banknote", metric: "cashSettlements", target: 10 },
+  { id: "secret-multiverse", title: "Доктор Стрэндж и мультивселенная расходов", description: "Одновременно состоять в 10 активных группах и не потеряться между счетами", category: "GROUPS", icon: "folders", metric: "activeGroups", target: 10 },
+  { id: "secret-coffee-path", title: "Это путь. К кофе", description: "Оплатить кофе и вступить в орден мандалорских кофеманов. Таков путь", category: "ACTIVITY", icon: "coffee", metric: "coffeeExpensesPaid", target: 1, hidden: true },
 ]
+
+const COFFEE_PATTERN = /(?:^|[^\p{L}])(?:кофе|кофейн\p{L}*|coffee|cappuccino|капучино|latte|латте|espresso|эспрессо|americano|американо|раф)(?=$|[^\p{L}])/iu
+
+export function isCoffeeExpense(title: string, category?: string | null) {
+  return COFFEE_PATTERN.test(`${title} ${category ?? ""}`)
+}
 
 export const ACHIEVEMENT_COUNT = definitions.length
 

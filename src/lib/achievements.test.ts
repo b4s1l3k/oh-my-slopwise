@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   ACHIEVEMENT_COUNT,
   evaluateAchievements,
+  isCoffeeExpense,
   type AchievementMetrics,
 } from "@/lib/achievements"
 
@@ -14,6 +15,7 @@ const emptyMetrics: AchievementMetrics = {
   expensesCreated: 0,
   expensesParticipated: 0,
   expensesPaid: 0,
+  coffeeExpensesPaid: 0,
   createdForOthers: 0,
   uniquePeople: 0,
   maxExpenseParticipants: 0,
@@ -102,7 +104,11 @@ describe("evaluateAchievements", () => {
     const lockedSecrets = evaluateAchievements(emptyMetrics).filter(
       (achievement) => achievement.hidden
     )
-    expect(lockedSecrets).toHaveLength(10)
+    expect(lockedSecrets.map((achievement) => achievement.id).sort()).toEqual([
+      "secret-coffee-path",
+      "secret-feast",
+      "secret-ledger",
+    ])
     expect(
       lockedSecrets.every(
         (achievement) =>
@@ -136,6 +142,19 @@ describe("evaluateAchievements", () => {
     expect(unlocked.find((item) => item.id === "secret-not-the-debts")?.unlocked).toBe(false)
   })
 
+  it("unlocks the hidden coffee achievement for the payer", () => {
+    const achievement = evaluateAchievements({
+      ...emptyMetrics,
+      coffeeExpensesPaid: 1,
+    }).find((item) => item.id === "secret-coffee-path")
+
+    expect(achievement).toMatchObject({
+      title: "Это путь. К кофе",
+      unlocked: true,
+      hidden: true,
+    })
+  })
+
   it("keeps a persisted achievement unlocked after current progress decreases", () => {
     const achievement = evaluateAchievements(
       emptyMetrics,
@@ -147,5 +166,25 @@ describe("evaluateAchievements", () => {
       progress: 0,
       target: 1,
     })
+  })
+})
+
+describe("isCoffeeExpense", () => {
+  it.each([
+    "Кофе",
+    "Кофейня у дома",
+    "Два латте",
+    "Капучино для Маши",
+    "Эспрессо",
+    "Americano",
+    "Coffee break",
+    "Раф с сиропом",
+  ])("recognizes %s as coffee", (title) => {
+    expect(isCoffeeExpense(title)).toBe(true)
+  })
+
+  it("does not match unrelated words containing the same letters", () => {
+    expect(isCoffeeExpense("График платежей")).toBe(false)
+    expect(isCoffeeExpense("Ужин в ресторане")).toBe(false)
   })
 })

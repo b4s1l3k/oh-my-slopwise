@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client"
+import { isCoffeeExpense } from "@/lib/achievements"
 
 export const STATISTIC_KIND = {
   groupCreated: "GROUP_CREATED",
@@ -6,6 +7,7 @@ export const STATISTIC_KIND = {
   expenseCreated: "EXPENSE_CREATED",
   expenseParticipated: "EXPENSE_PARTICIPATED",
   expensePaid: "EXPENSE_PAID",
+  coffeePaid: "COFFEE_PAID",
   createdForOther: "CREATED_FOR_OTHER",
   customRate: "CUSTOM_RATE",
   currency: "CURRENCY",
@@ -156,6 +158,8 @@ type ExpenseHistoryInput = {
   paidById: string
   currency: string
   amount: number
+  title: string
+  category: string | null
   splitType: string
   customRate: number | null
   participantIds: string[]
@@ -210,6 +214,23 @@ export async function recordExpenseHistory(tx: Tx, expense: ExpenseHistoryInput)
     })
   }
   await addFacts(tx, facts)
+
+  // Keep the coffee condition aligned with the corrected title, category and
+  // payer while the expense exists. Once the expense is deleted, the fact is
+  // intentionally retained as account history.
+  await tx.userStatisticFact.deleteMany({
+    where: {
+      kind: STATISTIC_KIND.coffeePaid,
+      reference: expense.id,
+    },
+  })
+  if (isCoffeeExpense(expense.title, expense.category)) {
+    await addFacts(tx, [{
+      userId: expense.paidById,
+      kind: STATISTIC_KIND.coffeePaid,
+      reference: expense.id,
+    }])
+  }
 
   // Monetary totals describe the corrected expense, rather than every edit.
   // The fact remains after deletion, but follows payer, amount and currency

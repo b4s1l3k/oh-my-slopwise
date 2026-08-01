@@ -7,6 +7,7 @@ import { acceptInvite, revokeInvite } from "@/services/invites.service"
 import {
   getCurrentUserStatistics,
   getHistoricalUserStatistics,
+  getHistoricalUserMoneyStatistics,
   getUserStatistics,
 } from "@/services/statistics.service"
 
@@ -65,9 +66,10 @@ describeDatabase("achievement persistence and group deletion", () => {
 
     await deleteGroup(group.id, admin.id)
 
-    const [current, historical, achievements] = await Promise.all([
+    const [current, historical, money, achievements] = await Promise.all([
       getCurrentUserStatistics(admin.id, now),
       getHistoricalUserStatistics(admin.id, now),
+      getHistoricalUserMoneyStatistics(admin.id),
       getUserAchievements(admin.id, now),
     ])
 
@@ -95,12 +97,91 @@ describeDatabase("achievement persistence and group deletion", () => {
       maxGroupExpenses: 1,
       tripGroups: 1,
     })
+    expect(money).toEqual({
+      spent: [{ currency: "RUB", amount: 1000 }],
+      returned: [{ currency: "RUB", amount: 500 }],
+    })
     expect(
       achievements.achievements.find((item) => item.id === "first-group")?.unlocked
     ).toBe(true)
     expect(
       achievements.achievements.find((item) => item.id === "first-expense")?.unlocked
     ).toBe(true)
+  })
+
+  it("deletes an expense and its cash settlement without losing lifetime money totals", async () => {
+    const now = new Date("2026-08-01T12:00:00.000Z")
+    const [admin, member] = await Promise.all([
+      prisma.user.create({
+        data: {
+          email: `${testPrefix}-expense-history-admin@example.com`,
+          name: "Expense History Admin",
+          passwordHash: "test-only",
+        },
+      }),
+      prisma.user.create({
+        data: {
+          email: `${testPrefix}-expense-history-member@example.com`,
+          name: "Expense History Member",
+          passwordHash: "test-only",
+        },
+      }),
+    ])
+    const group = await createGroup(admin.id, {
+      name: "Expense deletion history",
+      type: "OTHER",
+      currency: "RUB",
+      memberIds: [member.id],
+    })
+    const expense = await createExpense(group.id, admin.id, {
+      title: "Deleted dinner",
+      amount: 24_000,
+      currency: "RUB",
+      date: now.toISOString(),
+      paidById: admin.id,
+      splitType: "EQUAL",
+      splits: [{ userId: admin.id }, { userId: member.id }],
+      cashPayments: [{ userId: member.id, amount: 12_000 }],
+    })
+    const cashSettlementId = (await prisma.settlement.findFirst({
+      where: { expenseId: expense.id },
+      select: { id: true },
+    }))?.id
+    expect(cashSettlementId).toBeDefined()
+
+    await deleteExpense(expense.id, admin.id)
+
+    const [expenseRows, splitRows, cashRows, current, moneyAfterExpenseDeletion] = await Promise.all([
+      prisma.expense.count({ where: { id: expense.id } }),
+      prisma.expenseSplit.count({ where: { expenseId: expense.id } }),
+      prisma.settlement.count({ where: { id: cashSettlementId } }),
+      getCurrentUserStatistics(admin.id, now),
+      getHistoricalUserMoneyStatistics(admin.id),
+    ])
+    expect({ expenseRows, splitRows, cashRows }).toEqual({
+      expenseRows: 0,
+      splitRows: 0,
+      cashRows: 0,
+    })
+    expect(current).toMatchObject({
+      expensesCreated: 0,
+      expensesParticipated: 0,
+      expensesPaid: 0,
+      settlementsReceived: 0,
+    })
+    expect(moneyAfterExpenseDeletion).toEqual({
+      spent: [{ currency: "RUB", amount: 24_000 }],
+      returned: [{ currency: "RUB", amount: 12_000 }],
+    })
+
+    // Once the expense is gone there is no outstanding balance, so deleting
+    // the group must succeed and must not remove the account-level totals.
+    await deleteGroup(group.id, admin.id)
+    expect(await prisma.group.count({ where: { id: group.id } })).toBe(0)
+    expect(await getHistoricalUserMoneyStatistics(admin.id)).toEqual({
+      spent: [{ currency: "RUB", amount: 24_000 }],
+      returned: [{ currency: "RUB", amount: 12_000 }],
+    })
   })
 
   it("cleans all group-owned rows, recalculates statistics, and preserves earned achievements", async () => {
@@ -604,6 +685,10 @@ describeDatabase("achievement persistence and group deletion", () => {
       currency: "RUB",
       date: new Date("2026-08-02T12:00:00.000Z"),
       notes: "К расходу «Cash after edit»",
+    })
+    expect(await getHistoricalUserMoneyStatistics(newPayer.id)).toEqual({
+      spent: [{ currency: "RUB", amount: 12_000 }],
+      returned: [{ currency: "RUB", amount: 3_000 }],
     })
 
     await expect(

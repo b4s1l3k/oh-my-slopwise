@@ -1,6 +1,7 @@
 import type { AchievementMetrics } from "@/lib/achievements"
 import { prisma } from "@/lib/db"
 import { STATISTIC_KIND } from "@/services/statistics-history.service"
+import type { UserMoneyStatistics } from "@/lib/statistics"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -218,6 +219,30 @@ export function mergeHistoricalAndCurrentStatistics(
     merged[key] = Math.max(historical[key], current[key])
   }
   return merged
+}
+
+export async function getHistoricalUserMoneyStatistics(
+  userId: string
+): Promise<UserMoneyStatistics> {
+  const groupedFacts = await prisma.userStatisticFact.groupBy({
+    by: ["kind", "currency"],
+    where: {
+      userId,
+      kind: { in: [STATISTIC_KIND.moneySpent, STATISTIC_KIND.moneyReturned] },
+      currency: { not: null },
+    },
+    _sum: { value: true },
+  })
+
+  const totals = (kind: string) => groupedFacts
+    .filter((fact) => fact.kind === kind && fact.currency !== null)
+    .map((fact) => ({ currency: fact.currency!, amount: fact._sum.value ?? 0 }))
+    .sort((left, right) => left.currency.localeCompare(right.currency))
+
+  return {
+    spent: totals(STATISTIC_KIND.moneySpent),
+    returned: totals(STATISTIC_KIND.moneyReturned),
+  }
 }
 
 // Kept as the current-data API for internal callers that explicitly need a live snapshot.

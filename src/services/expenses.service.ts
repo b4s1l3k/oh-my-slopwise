@@ -252,6 +252,7 @@ export async function createExpense(
       createdById: expense.createdById,
       paidById: expense.paidById,
       currency: expense.currency,
+      amount: expense.amount,
       splitType: expense.splitType,
       customRate: expense.customRate,
       participantIds: expense.splits.map((split) => split.userId),
@@ -351,7 +352,7 @@ export async function updateExpense(
     // Наличные являются частью расхода: при исправлении плательщика, валюты,
     // курса или даты связанные расчёты должны измениться вместе с ним.
     for (const settlement of txExisting.settlements) {
-      await tx.settlement.update({
+      const updatedSettlement = await tx.settlement.update({
         where: { id: settlement.id },
         data: {
           toUserId: data.paidById,
@@ -361,6 +362,7 @@ export async function updateExpense(
           notes: `К расходу «${data.title}»`,
         },
       })
+      await recordSettlementHistory(tx, updatedSettlement)
     }
 
     // полностью пересобираем split-строки
@@ -404,6 +406,7 @@ export async function updateExpense(
       createdById: expense.createdById,
       paidById: expense.paidById,
       currency: expense.currency,
+      amount: expense.amount,
       splitType: expense.splitType,
       customRate: expense.customRate,
       participantIds: expense.splits.map((split) => split.userId),

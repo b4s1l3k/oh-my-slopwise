@@ -12,6 +12,8 @@ export const STATISTIC_KIND = {
   settlementSent: "SETTLEMENT_SENT",
   settlementReceived: "SETTLEMENT_RECEIVED",
   cashSettlement: "CASH_SETTLEMENT",
+  moneySpent: "MONEY_SPENT",
+  moneyReturned: "MONEY_RETURNED",
   inviteCreated: "INVITE_CREATED",
   activeGroupsRecord: "ACTIVE_GROUPS_RECORD",
   expenseParticipantsRecord: "EXPENSE_PARTICIPANTS_RECORD",
@@ -21,7 +23,13 @@ export const STATISTIC_KIND = {
 } as const
 
 type Tx = Prisma.TransactionClient
-type Fact = { userId: string; kind: string; reference: string; value?: number }
+type Fact = {
+  userId: string
+  kind: string
+  reference: string
+  value?: number
+  currency?: string
+}
 
 const groupKind = (type: string) => `GROUP_JOINED_${type}`
 const splitKind = (type: string) => `SPLIT_${type}`
@@ -31,7 +39,7 @@ async function addFacts(tx: Tx, facts: Fact[]) {
   await tx.userStatisticFact.createMany({ data: facts, skipDuplicates: true })
 }
 
-async function keepRecordMaximum(tx: Tx, fact: Required<Fact>) {
+async function keepRecordMaximum(tx: Tx, fact: Fact & { value: number }) {
   const updated = await tx.userStatisticFact.updateMany({
     where: {
       userId: fact.userId,
@@ -147,6 +155,7 @@ type ExpenseHistoryInput = {
   createdById: string
   paidById: string
   currency: string
+  amount: number
   splitType: string
   customRate: number | null
   participantIds: string[]
@@ -202,6 +211,37 @@ export async function recordExpenseHistory(tx: Tx, expense: ExpenseHistoryInput)
   }
   await addFacts(tx, facts)
 
+  // Monetary totals describe the corrected expense, rather than every edit.
+  // The fact remains after deletion, but follows payer, amount and currency
+  // while the expense still exists.
+  await tx.userStatisticFact.deleteMany({
+    where: {
+      kind: STATISTIC_KIND.moneySpent,
+      reference: expense.id,
+      userId: { not: expense.paidById },
+    },
+  })
+  await tx.userStatisticFact.upsert({
+    where: {
+      userId_kind_reference: {
+        userId: expense.paidById,
+        kind: STATISTIC_KIND.moneySpent,
+        reference: expense.id,
+      },
+    },
+    create: {
+      userId: expense.paidById,
+      kind: STATISTIC_KIND.moneySpent,
+      reference: expense.id,
+      value: expense.amount,
+      currency: expense.currency,
+    },
+    update: {
+      value: expense.amount,
+      currency: expense.currency,
+    },
+  })
+
   await keepRecordMaximum(tx, {
     userId: expense.createdById,
     kind: STATISTIC_KIND.expenseParticipantsRecord,
@@ -236,7 +276,14 @@ export async function recordExpenseHistory(tx: Tx, expense: ExpenseHistoryInput)
 
 export async function recordSettlementHistory(
   tx: Tx,
-  settlement: { id: string; fromUserId: string; toUserId: string; expenseId?: string | null }
+  settlement: {
+    id: string
+    fromUserId: string
+    toUserId: string
+    expenseId?: string | null
+    amount: number
+    currency: string
+  }
 ) {
   await addFacts(tx, [
     {
@@ -257,6 +304,34 @@ export async function recordSettlementHistory(
         }]
       : []),
   ])
+
+  await tx.userStatisticFact.deleteMany({
+    where: {
+      kind: STATISTIC_KIND.moneyReturned,
+      reference: settlement.id,
+      userId: { not: settlement.toUserId },
+    },
+  })
+  await tx.userStatisticFact.upsert({
+    where: {
+      userId_kind_reference: {
+        userId: settlement.toUserId,
+        kind: STATISTIC_KIND.moneyReturned,
+        reference: settlement.id,
+      },
+    },
+    create: {
+      userId: settlement.toUserId,
+      kind: STATISTIC_KIND.moneyReturned,
+      reference: settlement.id,
+      value: settlement.amount,
+      currency: settlement.currency,
+    },
+    update: {
+      value: settlement.amount,
+      currency: settlement.currency,
+    },
+  })
 }
 
 export async function recordInviteHistory(

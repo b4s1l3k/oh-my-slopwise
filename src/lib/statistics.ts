@@ -1,6 +1,10 @@
 import type { AchievementMetrics } from "@/lib/achievements"
 
 export type ProfileStatistics = {
+  money: {
+    spent: MoneyTotal[]
+    returned: MoneyTotal[]
+  }
   overview: {
     expensesParticipated: number
     expensesCreated: number
@@ -41,8 +45,22 @@ export type ProfileStatistics = {
   }
 }
 
-export function buildProfileStatistics(metrics: AchievementMetrics): ProfileStatistics {
+export type MoneyTotal = {
+  currency: string
+  amount: number
+}
+
+export type UserMoneyStatistics = {
+  spent: MoneyTotal[]
+  returned: MoneyTotal[]
+}
+
+export function buildProfileStatistics(
+  metrics: AchievementMetrics,
+  money: UserMoneyStatistics = { spent: [], returned: [] }
+): ProfileStatistics {
   return {
+    money,
     overview: {
       expensesParticipated: metrics.expensesParticipated,
       expensesCreated: metrics.expensesCreated,

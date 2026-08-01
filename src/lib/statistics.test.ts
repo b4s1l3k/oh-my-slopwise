@@ -35,6 +35,7 @@ const metrics: AchievementMetrics = {
 describe("buildProfileStatistics", () => {
   it("maps achievement metrics into stable public statistics", () => {
     expect(buildProfileStatistics(metrics)).toEqual({
+      money: { spent: [], returned: [] },
       overview: {
         expensesParticipated: 31,
         expensesCreated: 20,
@@ -60,5 +61,17 @@ describe("buildProfileStatistics", () => {
         accountAgeDays: 42,
       },
     })
+  })
+
+  it("includes monetary totals without combining currencies", () => {
+    const money = {
+      spent: [
+        { currency: "EUR", amount: 5_000 },
+        { currency: "RUB", amount: 125_000 },
+      ],
+      returned: [{ currency: "RUB", amount: 40_000 }],
+    }
+
+    expect(buildProfileStatistics(metrics, money).money).toEqual(money)
   })
 })

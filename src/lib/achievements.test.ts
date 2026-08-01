@@ -39,7 +39,7 @@ describe("evaluateAchievements", () => {
   it("returns the full achievement collection in a locked state", () => {
     const achievements = evaluateAchievements(emptyMetrics)
 
-    expect(ACHIEVEMENT_COUNT).toBeGreaterThan(40)
+    expect(ACHIEVEMENT_COUNT).toBeGreaterThan(60)
     expect(achievements).toHaveLength(ACHIEVEMENT_COUNT)
     expect(achievements.every((achievement) => !achievement.unlocked)).toBe(true)
   })
@@ -93,9 +93,47 @@ describe("evaluateAchievements", () => {
       percent: 0,
     })
     expect(unlocked).toMatchObject({
-      title: "Тысяча и один чек",
+      title: "Чеканос: Война бесконечных трат",
       unlocked: true,
     })
+  })
+
+  it("keeps only the rare geek achievements secret", () => {
+    const lockedSecrets = evaluateAchievements(emptyMetrics).filter(
+      (achievement) => achievement.hidden
+    )
+    expect(lockedSecrets).toHaveLength(10)
+    expect(
+      lockedSecrets.every(
+        (achievement) =>
+          achievement.title === "Секретная ачивка" &&
+          achievement.description === "Условие откроется вместе с наградой" &&
+          achievement.icon === "lock"
+      )
+    ).toBe(true)
+
+    const unlocked = evaluateAchievements({
+      ...emptyMetrics,
+      expensesCreated: 1,
+      settlementsSent: 1,
+      percentageSplits: 1,
+    })
+    expect(unlocked.find((item) => item.id === "secret-wizard-accountant")).toMatchObject({
+      title: "Ты бухгалтер, Гарри",
+      unlocked: true,
+      hidden: false,
+    })
+    expect(unlocked.find((item) => item.id === "secret-force-balance")).toMatchObject({
+      title: "Да пребудет с тобой баланс",
+      unlocked: true,
+      hidden: false,
+    })
+    expect(unlocked.find((item) => item.id === "secret-expensium-leviosa")).toMatchObject({
+      title: "Расходиум Левиоса",
+      unlocked: true,
+      hidden: false,
+    })
+    expect(unlocked.find((item) => item.id === "secret-not-the-debts")?.unlocked).toBe(false)
   })
 
   it("keeps a persisted achievement unlocked after current progress decreases", () => {

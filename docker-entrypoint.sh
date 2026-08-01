@@ -37,6 +37,23 @@ CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
 );
 SQL
 
+# TEMPORARY: recover the known partial state left by the original SHARES enum
+# migration. The SQL is deliberately narrow and aborts on any unknown schema.
+legacy_migration="20260722100000_remove_shares_split_type"
+legacy_unfinished="$(psql "$MIGRATION_DATABASE_URL" -Atq \
+  -c "SELECT COUNT(*) FROM \"_prisma_migrations\" WHERE \"migration_name\" = '$legacy_migration' AND \"finished_at\" IS NULL AND \"rolled_back_at\" IS NULL")"
+if [ "$legacy_unfinished" -gt 0 ]; then
+  echo "Recovering failed migration $legacy_migration"
+  psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction \
+    -f /app/prisma/recovery/repair_failed_remove_shares.sql
+
+  # If the DDL had already completed, the recovery marks the old attempt as
+  # applied. Align its checksum with the corrected migration file.
+  corrected_checksum="$(sha256sum "/app/prisma/migrations/$legacy_migration/migration.sql" | awk '{print $1}')"
+  psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 >/dev/null \
+    -c "UPDATE \"_prisma_migrations\" SET \"checksum\" = '$corrected_checksum' WHERE \"migration_name\" = '$legacy_migration' AND \"finished_at\" IS NOT NULL AND \"rolled_back_at\" IS NULL AND \"logs\" LIKE '%SLOPwise automatic recovery:%'"
+fi
+
 for migration_file in /app/prisma/migrations/*/migration.sql; do
   migration_name="$(basename "$(dirname "$migration_file")")"
   case "$migration_name" in

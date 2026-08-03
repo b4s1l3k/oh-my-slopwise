@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { createGroupSchema } from "@/lib/validations/group"
 import * as groupsService from "@/services/groups.service"
+import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
 
 export async function GET() {
@@ -15,12 +16,16 @@ export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
   const parsed = createGroupSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }
 
-  const group = await groupsService.createGroup(session.user.id, parsed.data)
-  return NextResponse.json({ group }, { status: 201 })
+  try {
+    const group = await groupsService.createGroup(session.user.id, parsed.data)
+    return NextResponse.json({ group }, { status: 201 })
+  } catch (e) {
+    return handleServiceError(e)
+  }
 }

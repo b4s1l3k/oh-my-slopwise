@@ -323,6 +323,7 @@ export async function updateExpense(
         settlements: {
           select: { id: true, fromUserId: true, amount: true },
         },
+        splits: { select: { userId: true } },
       },
     })
     if (!txExisting || txExisting.groupId !== existing.groupId) throw new Error("NOT_FOUND")
@@ -414,6 +415,9 @@ export async function updateExpense(
       splitType: expense.splitType,
       customRate: expense.customRate,
       participantIds: expense.splits.map((split) => split.userId),
+    }, {
+      paidById: txExisting.paidById,
+      participantIds: txExisting.splits.map((split) => split.userId),
     })
     await tx.group.update({ where: { id: existing.groupId }, data: { updatedAt: new Date() } })
     return expense

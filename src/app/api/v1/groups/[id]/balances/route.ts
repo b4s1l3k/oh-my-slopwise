@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth"
 import * as balancesService from "@/services/balances.service"
+import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
 
 type Params = { params: Promise<{ id: string }> }
@@ -12,7 +13,7 @@ export async function GET(_req: Request, { params }: Params) {
   try {
     const balances = await balancesService.getGroupBalances(groupId, session.user.id)
     return NextResponse.json({ balances })
-  } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  } catch (e) {
+    return handleServiceError(e)
   }
 }

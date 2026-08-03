@@ -15,10 +15,19 @@ export const requisitesSchema = z.object({
   payeeAccount: optionalText(100),
 })
 
+// Разрешаем только http(s)-ссылки — блокируем javascript:/data: и подобные
+// схемы, которые могли бы привести к XSS при отрисовке аватара.
+const avatarUrlSchema = z
+  .string()
+  .url()
+  .refine((v) => /^https?:\/\//i.test(v), "Ссылка должна начинаться с http:// или https://")
+  .nullable()
+  .optional()
+
 export const updateProfileSchema = z
   .object({
     name: z.string().min(1, "Имя обязательно").max(100).optional(),
-    avatarUrl: z.string().url().nullable().optional(),
+    avatarUrl: avatarUrlSchema,
   })
   .merge(requisitesSchema)
 

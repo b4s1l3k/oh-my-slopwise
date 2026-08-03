@@ -13,8 +13,8 @@ export async function GET(_req: Request, { params }: Params) {
   try {
     const settlements = await settlementsService.getGroupSettlements(groupId, session.user.id)
     return NextResponse.json({ settlements })
-  } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  } catch (e) {
+    return handleServiceError(e)
   }
 }
 

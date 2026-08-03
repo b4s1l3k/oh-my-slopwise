@@ -36,6 +36,43 @@ type Fact = {
 const groupKind = (type: string) => `GROUP_JOINED_${type}`
 const splitKind = (type: string) => `SPLIT_${type}`
 
+// Факты, однозначно привязанные к конкретной трате (reference = expense.id).
+// При редактировании траты их нужно пересобрать: старые значения (способ
+// деления, плательщик, ручной курс, участники) больше не описывают трату.
+// НЕ включаем сюда EXPENSE_CREATED (автор не меняется) и *_RECORD (личные
+// рекорды-максимумы, которые намеренно не уменьшаются).
+const PER_EXPENSE_FACT_KINDS = [
+  "SPLIT_EQUAL",
+  "SPLIT_EXACT",
+  "SPLIT_PERCENTAGE",
+  STATISTIC_KIND.expensePaid,
+  STATISTIC_KIND.expenseParticipated,
+  STATISTIC_KIND.createdForOther,
+  STATISTIC_KIND.customRate,
+]
+
+// Факт CURRENCY привязан к коду валюты и разделяется всеми тратами пользователя
+// в этой валюте, поэтому его нельзя удалять по reference=expense.id. Вместо этого
+// пересчитываем: какие валюты пользователь реально использует в живых тратах
+// (как автор, плательщик или участник) — и убираем факты для остальных.
+async function reconcileCurrencyFacts(tx: Tx, userId: string) {
+  const rows = await tx.expense.findMany({
+    where: {
+      OR: [
+        { createdById: userId },
+        { paidById: userId },
+        { splits: { some: { userId } } },
+      ],
+    },
+    distinct: ["currency"],
+    select: { currency: true },
+  })
+  const used = rows.map((row) => row.currency)
+  await tx.userStatisticFact.deleteMany({
+    where: { userId, kind: STATISTIC_KIND.currency, reference: { notIn: used } },
+  })
+}
+
 async function addFacts(tx: Tx, facts: Fact[]) {
   if (facts.length === 0) return
   await tx.userStatisticFact.createMany({ data: facts, skipDuplicates: true })
@@ -165,7 +202,13 @@ type ExpenseHistoryInput = {
   participantIds: string[]
 }
 
-export async function recordExpenseHistory(tx: Tx, expense: ExpenseHistoryInput) {
+export async function recordExpenseHistory(
+  tx: Tx,
+  expense: ExpenseHistoryInput,
+  // Прежнее состояние траты (только при редактировании) — нужно, чтобы вычистить
+  // валютные факты у участников/плательщика, которых убрали из этой траты.
+  previous?: { paidById: string; participantIds: string[] }
+) {
   const participantIds = [...new Set(expense.participantIds)]
   const relatedUserIds = [...new Set([
     expense.createdById,
@@ -213,7 +256,28 @@ export async function recordExpenseHistory(tx: Tx, expense: ExpenseHistoryInput)
       reference: expense.id,
     })
   }
+
+  // Пересобираем факты, привязанные к этой трате: удаляем прежние и добавляем
+  // актуальные. На создании удалять нечего (reference новый), на правке это
+  // убирает устаревшие способ деления / плательщика / курс / участников.
+  await tx.userStatisticFact.deleteMany({
+    where: { reference: expense.id, kind: { in: PER_EXPENSE_FACT_KINDS } },
+  })
   await addFacts(tx, facts)
+
+  // На создании валюту только добавляем — чистить нечего. На правке валютные
+  // факты разделяются между тратами, поэтому пересчитываем их для всех, кто
+  // относится к трате сейчас или относился до правки (removed-участники).
+  if (previous) {
+    const currencyAffected = new Set([
+      ...relatedUserIds,
+      previous.paidById,
+      ...previous.participantIds,
+    ])
+    for (const userId of currencyAffected) {
+      await reconcileCurrencyFacts(tx, userId)
+    }
+  }
 
   // Keep the coffee condition aligned with the corrected title, category and
   // payer while the expense exists. Once the expense is deleted, the fact is

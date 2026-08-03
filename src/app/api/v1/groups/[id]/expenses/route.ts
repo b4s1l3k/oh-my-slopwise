@@ -14,7 +14,8 @@ export async function GET(req: Request, { params }: Params) {
   const { id: groupId } = await params
   const url = new URL(req.url)
   const page = Number(url.searchParams.get("page") ?? 1)
-  if (!Number.isSafeInteger(page) || page < 1) {
+  // Верхняя граница защищает от гигантского OFFSET (page=9e15 и т.п.)
+  if (!Number.isSafeInteger(page) || page < 1 || page > 100_000) {
     return NextResponse.json({ error: "Invalid page" }, { status: 400 })
   }
 
@@ -31,7 +32,7 @@ export async function POST(req: Request, { params }: Params) {
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id: groupId } = await params
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
   const parsed = createExpenseSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })

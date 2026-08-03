@@ -2,61 +2,13 @@
 
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import type { LucideIcon } from "lucide-react"
-import {
-  BadgeCheck,
-  BadgeDollarSign,
-  Banknote,
-  Blocks,
-  BookOpen,
-  Cake,
-  Calculator,
-  CalendarDays,
-  CircleCheckBig,
-  Clipboard,
-  Coffee,
-  Crosshair,
-  Crown,
-  Equal,
-  FolderPlus,
-  Folders,
-  Globe2,
-  HandCoins,
-  Handshake,
-  Heart,
-  History,
-  House,
-  Languages,
-  Landmark,
-  LayoutGrid,
-  Library,
-  Lock,
-  Megaphone,
-  Network,
-  Notebook,
-  PartyPopper,
-  Pencil,
-  Percent,
-  Plane,
-  ReceiptText,
-  Ruler,
-  Shapes,
-  Shield,
-  Sparkles,
-  Star,
-  Trophy,
-  UserCheck,
-  UserRoundPlus,
-  Users,
-  Utensils,
-  Wallet,
-  WalletCards,
-} from "lucide-react"
+import { Trophy } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Achievement, AchievementCategory } from "@/lib/achievements"
+import { getAchievementIcon } from "@/lib/achievement-icons"
 import { cn } from "@/lib/utils"
 
 type AchievementsResponse = {
@@ -73,58 +25,8 @@ const categoryLabels: Record<AchievementCategory, string> = {
   GROUPS: "Группы",
 }
 
-const iconMap: Record<string, LucideIcon> = {
-  "badge-check": BadgeCheck,
-  "badge-dollar": BadgeDollarSign,
-  banknote: Banknote,
-  blocks: Blocks,
-  "book-open": BookOpen,
-  cake: Cake,
-  calculator: Calculator,
-  calendar: CalendarDays,
-  "circle-check": CircleCheckBig,
-  clipboard: Clipboard,
-  coffee: Coffee,
-  crosshair: Crosshair,
-  crown: Crown,
-  equal: Equal,
-  "folder-plus": FolderPlus,
-  folders: Folders,
-  globe: Globe2,
-  "hand-coins": HandCoins,
-  handshake: Handshake,
-  heart: Heart,
-  history: History,
-  house: House,
-  languages: Languages,
-  landmark: Landmark,
-  "layout-grid": LayoutGrid,
-  library: Library,
-  lock: Lock,
-  megaphone: Megaphone,
-  network: Network,
-  notebook: Notebook,
-  "party-popper": PartyPopper,
-  pencil: Pencil,
-  percent: Percent,
-  plane: Plane,
-  receipt: ReceiptText,
-  ruler: Ruler,
-  shapes: Shapes,
-  shield: Shield,
-  sparkles: Sparkles,
-  star: Star,
-  "user-check": UserCheck,
-  "user-plus": UserRoundPlus,
-  users: Users,
-  "users-round": Users,
-  utensils: Utensils,
-  wallet: Wallet,
-  "wallet-cards": WalletCards,
-}
-
 function AchievementCard({ achievement }: { achievement: Achievement }) {
-  const Icon = iconMap[achievement.icon] ?? Trophy
+  const Icon = getAchievementIcon(achievement.icon)
   const secret = achievement.hidden && !achievement.unlocked
 
   return (

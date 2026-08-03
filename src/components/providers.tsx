@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
 import { SessionProvider } from "next-auth/react"
 import { ToastProvider } from "@/components/ui/toast"
+import { AchievementWatcher } from "@/components/achievements/achievement-watcher"
 import { useState } from "react"
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -21,6 +22,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           {children}
+          <AchievementWatcher />
           <ReactQueryDevtools initialIsOpen={false} />
         </ToastProvider>
       </QueryClientProvider>

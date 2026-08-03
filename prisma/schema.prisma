@@ -43,15 +43,20 @@ model User {
 // Полученные ачивки хранятся отдельно от текущих статистических метрик.
 // Поэтому уже открытая награда не пропадает после удаления исходных данных.
 model UserAchievement {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
   achievementId String
-  unlockedAt    DateTime @default(now())
+  unlockedAt    DateTime  @default(now())
+  // Момент, когда пользователю показали всплывающее уведомление об ачивке.
+  // null — ещё не показывали (нужно всплыть). Существующие записи при миграции
+  // помечаются как уже показанные, чтобы не спамить прошлыми наградами.
+  notifiedAt    DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, achievementId])
   @@index([achievementId])
+  @@index([userId, notifiedAt])
   @@map("user_achievements")
 }
 

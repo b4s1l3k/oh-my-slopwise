@@ -15,7 +15,19 @@ npm run db:reset     # drop and recreate DB, re-run all migrations + seed
 npm run setup        # full bootstrap: install + generate + migrate + seed
 ```
 
-There are no lint or test scripts. TypeScript checking: `npx tsc --noEmit`.
+Tests use Vitest:
+
+```bash
+npm test            # pure unit tests (no DB); DB-backed service tests are skipped
+npm run test:db     # full suite incl. DB-backed service tests (needs docker Postgres)
+npm run test:coverage # full suite + v8 coverage report
+npm run test:watch
+```
+
+DB-backed service specs are gated behind `RUN_DB_INTEGRATION_TESTS=true` and MUST
+run with `--no-file-parallelism` (baked into `test:db`): the services use
+Serializable transactions, so parallel test files deadlock against each other.
+There is no lint script. TypeScript checking: `npx tsc --noEmit`.
 
 Local Postgres runs on port **5433** (not 5432) via `docker-compose up -d`.
 

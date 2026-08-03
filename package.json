@@ -11,6 +11,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:db": "RUN_DB_INTEGRATION_TESTS=true vitest run --no-file-parallelism",
+    "test:coverage": "RUN_DB_INTEGRATION_TESTS=true vitest run --no-file-parallelism --coverage",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force",
     "setup": "npm install && prisma generate && prisma migrate dev --name init && tsx prisma/seed.ts"
@@ -49,6 +51,7 @@
     "@types/node": "^22.9.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "prisma": "^6.0.0",

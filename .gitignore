@@ -9,6 +9,9 @@ node_modules/
 # build artifacts
 *.tsbuildinfo
 
+# test coverage output
+/coverage
+
 # OS junk
 .DS_Store
 

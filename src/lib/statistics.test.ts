@@ -64,6 +64,19 @@ describe("buildProfileStatistics", () => {
     })
   })
 
+  it("groups.other зажимается в 0, если типизированных групп больше, чем активных", () => {
+    // home+trip+couple (2+2+2=6) больше activeGroups (3) — разница отрицательна,
+    // но other не может быть меньше нуля.
+    const stats = buildProfileStatistics({
+      ...metrics,
+      activeGroups: 3,
+      homeGroups: 2,
+      tripGroups: 2,
+      coupleGroups: 2,
+    })
+    expect(stats.groups.other).toBe(0)
+  })
+
   it("includes monetary totals without combining currencies", () => {
     const money = {
       spent: [

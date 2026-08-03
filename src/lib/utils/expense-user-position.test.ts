@@ -68,4 +68,51 @@ describe("getExpenseUserPosition", () => {
       })
     ).toBeNull()
   })
+
+  it("returns null when there is no current user", () => {
+    expect(
+      getExpenseUserPosition({
+        currentUserId: undefined,
+        paidById: "alice",
+        expenseAmount: 240000,
+        shareAmount: 120000,
+      })
+    ).toBeNull()
+  })
+
+  it("CASH_PAID: cash settlement exists but no matching split (legacy/edge data)", () => {
+    expect(
+      getExpenseUserPosition({
+        currentUserId: "bob",
+        paidById: "alice",
+        expenseAmount: 240000,
+        shareAmount: undefined,
+        cashPaid: 50000,
+      })
+    ).toEqual({ kind: "CASH_PAID", cashPaid: 50000 })
+  })
+
+  it("SETTLED when cash covers or exceeds the share (remaining clamped at 0)", () => {
+    expect(
+      getExpenseUserPosition({
+        currentUserId: "bob",
+        paidById: "alice",
+        expenseAmount: 240000,
+        shareAmount: 100000,
+        cashPaid: 150000,
+      })
+    ).toEqual({ kind: "SETTLED", cashPaid: 150000 })
+  })
+
+  it("null when share fully consumed but there is no cash and no owed remainder", () => {
+    expect(
+      getExpenseUserPosition({
+        currentUserId: "bob",
+        paidById: "alice",
+        expenseAmount: 240000,
+        shareAmount: 0,
+        cashPaid: 0,
+      })
+    ).toBeNull()
+  })
 })

@@ -43,9 +43,9 @@ describe("evaluateAchievements", () => {
     const achievements = evaluateAchievements(emptyMetrics)
 
     // Точное число ачивок (пинним, чтобы изменение набора было явным сигналом).
-    // toHaveLength(65) — не тавтология: сравниваем длину map-результата с константой.
-    expect(ACHIEVEMENT_COUNT).toBe(65)
-    expect(achievements).toHaveLength(65)
+    // toHaveLength(49) — не тавтология: сравниваем длину map-результата с константой.
+    expect(ACHIEVEMENT_COUNT).toBe(49)
+    expect(achievements).toHaveLength(49)
     expect(achievements.every((achievement) => !achievement.unlocked)).toBe(true)
   })
 
@@ -103,13 +103,12 @@ describe("evaluateAchievements", () => {
     })
   })
 
-  it("keeps only the rare geek achievements secret", () => {
+  it("keeps only the two rare geek achievements secret", () => {
     const lockedSecrets = evaluateAchievements(emptyMetrics).filter(
       (achievement) => achievement.hidden
     )
     expect(lockedSecrets.map((achievement) => achievement.id).sort()).toEqual([
       "secret-coffee-path",
-      "secret-feast",
       "secret-ledger",
     ])
     expect(
@@ -120,29 +119,6 @@ describe("evaluateAchievements", () => {
           achievement.icon === "lock"
       )
     ).toBe(true)
-
-    const unlocked = evaluateAchievements({
-      ...emptyMetrics,
-      expensesCreated: 1,
-      settlementsSent: 1,
-      percentageSplits: 1,
-    })
-    expect(unlocked.find((item) => item.id === "secret-wizard-accountant")).toMatchObject({
-      title: "Ты бухгалтер, Гарри",
-      unlocked: true,
-      hidden: false,
-    })
-    expect(unlocked.find((item) => item.id === "secret-force-balance")).toMatchObject({
-      title: "Да пребудет с тобой баланс",
-      unlocked: true,
-      hidden: false,
-    })
-    expect(unlocked.find((item) => item.id === "secret-expensium-leviosa")).toMatchObject({
-      title: "Расходиум Левиоса",
-      unlocked: true,
-      hidden: false,
-    })
-    expect(unlocked.find((item) => item.id === "secret-not-the-debts")?.unlocked).toBe(false)
   })
 
   it("unlocks the hidden coffee achievement for the payer", () => {

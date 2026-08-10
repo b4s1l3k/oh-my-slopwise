@@ -1,0 +1,5 @@
+# SLOPwise Personal — vulnerability disclosure
+Contact: mailto:security@ruyek01.direct.kexogg.ru
+Preferred-Languages: ru, en
+Canonical: https://splitwise.ruyek01.direct.kexogg.ru/.well-known/security.txt
+Expires: 2027-08-01T00:00:00.000Z

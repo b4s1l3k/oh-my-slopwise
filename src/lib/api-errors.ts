@@ -19,6 +19,10 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
     status: 409,
     message: "По этому участнику остались долги — сначала завершите расчёты",
   },
+  INACTIVE_MEMBER_HAS_BALANCE: {
+    status: 409,
+    message: "Изменение вернёт долг вышедшему участнику — сначала верните его в группу",
+  },
   MEMBER_ALREADY_ACTIVE: {
     status: 409,
     message: "Пользователь уже состоит в группе",
@@ -38,6 +42,14 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   CONVERTED_AMOUNT_TOO_LARGE: {
     status: 422,
     message: "Сумма после пересчёта слишком велика — проверьте валюту и курс",
+  },
+  CONVERTED_AMOUNT_TOO_SMALL: {
+    status: 422,
+    message: "Сумма после пересчёта меньше минимальной единицы валюты группы",
+  },
+  TRANSACTION_CONFLICT: {
+    status: 409,
+    message: "Данные изменились одновременно — повторите действие",
   },
   INVITE_INVALID: { status: 404, message: "Приглашение недействительно или отозвано" },
   RATE_UNAVAILABLE: { status: 503, message: "Курс ЦБ временно недоступен — укажите курс вручную" },

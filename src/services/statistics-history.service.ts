@@ -370,6 +370,17 @@ export async function recordSettlementHistory(
     currency: string
   }
 ) {
+  // A correction may repoint a cash settlement to another expense payer.
+  // Keep one receiver fact for the corrected settlement instead of retaining
+  // statistics for both the old and current recipients.
+  await tx.userStatisticFact.deleteMany({
+    where: {
+      kind: STATISTIC_KIND.settlementReceived,
+      reference: settlement.id,
+      userId: { not: settlement.toUserId },
+    },
+  })
+
   await addFacts(tx, [
     {
       userId: settlement.fromUserId,

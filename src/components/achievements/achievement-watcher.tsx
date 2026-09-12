@@ -40,7 +40,7 @@ export function AchievementWatcher() {
       if (inFlight.current) return
       inFlight.current = true
       try {
-        const res = await fetch("/api/v1/users/me/achievements/unseen")
+        const res = await fetch("/api/v1/users/me/achievements/unseen", { method: "POST" })
         if (!res.ok) return
         const data = (await res.json()) as UnseenResponse
         if (!data.unlocked?.length) return

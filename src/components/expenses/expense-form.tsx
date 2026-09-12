@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2 } from "lucide-react"
-import { parseMoneyInput, toLocalDateInputValue } from "@/lib/utils/format"
+import { parseMoneyInput, toCalendarDateInputValue } from "@/lib/utils/format"
 import { useToast } from "@/components/ui/toast"
 import { CURRENCY_META, isSupportedCurrency } from "@/lib/currencies"
 import { CurrencySelect } from "@/components/ui/currency-select"
@@ -57,7 +57,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
   )
   const [splitType, setSplitType] = useState<SplitType>(expense?.splitType ?? "EQUAL")
   const [date, setDate] = useState(
-    toLocalDateInputValue(expense?.date)
+    toCalendarDateInputValue(expense?.date)
   )
   const [notes, setNotes] = useState(expense?.notes ?? "")
   const [selectedIds, setSelectedIds] = useState<string[]>(
@@ -128,7 +128,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
           customRate,
           paidById,
           splitType,
-          date: new Date(date).toISOString(),
+          date,
           notes: notes.trim() || undefined,
           splits,
           ...(cashPaymentsList.length > 0 ? { cashPayments: cashPaymentsList } : {}),

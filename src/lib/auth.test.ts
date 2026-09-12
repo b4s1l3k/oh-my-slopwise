@@ -58,6 +58,14 @@ describe("authorize (Credentials provider)", () => {
     expect(findUnique).not.toHaveBeenCalled()
   })
 
+  it("не передаёт в bcrypt пароль длиннее 72 UTF-8 байт", async () => {
+    expect(
+      await capturedAuthorize({ email: "user@example.com", password: "я".repeat(37) })
+    ).toBeNull()
+    expect(findUnique).not.toHaveBeenCalled()
+    expect(bcryptCompare).not.toHaveBeenCalled()
+  })
+
   it("возвращает null, если пользователь не найден", async () => {
     findUnique.mockResolvedValue(null)
     expect(await capturedAuthorize(creds)).toBeNull()

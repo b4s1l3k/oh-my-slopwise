@@ -1,6 +1,9 @@
 import { afterAll, describe, expect, it } from "vitest"
 import { prisma } from "@/lib/db"
-import { getUserAchievements } from "@/services/achievements.service"
+import {
+  collectUnseenAchievementUnlocks,
+  getUserAchievements,
+} from "@/services/achievements.service"
 import { createExpense, deleteExpense, getExpense, updateExpense } from "@/services/expenses.service"
 import { createGroup, deleteGroup, getGroup, removeMember } from "@/services/groups.service"
 import { acceptInvite, revokeInvite } from "@/services/invites.service"
@@ -208,6 +211,7 @@ describeDatabase("achievement persistence and group deletion", () => {
       splits: [{ userId: user.id }],
     })
 
+    await collectUnseenAchievementUnlocks(user.id)
     const achievements = await getUserAchievements(user.id)
     expect(
       achievements.achievements.find((item) => item.id === "secret-coffee-path")
@@ -330,6 +334,7 @@ describeDatabase("achievement persistence and group deletion", () => {
       tripGroups: 1,
     })
 
+    await collectUnseenAchievementUnlocks(admin.id, now)
     const achievementsBefore = await getUserAchievements(admin.id, now)
     expect(
       achievementsBefore.achievements.find((item) => item.id === "first-group")?.unlocked
@@ -730,7 +735,7 @@ describeDatabase("achievement persistence and group deletion", () => {
       toUserId: newPayer.id,
       amountBase: 3_000,
       currency: "RUB",
-      date: new Date("2026-08-02T12:00:00.000Z"),
+      date: new Date("2026-08-02T00:00:00.000Z"),
       notes: "К расходу «Cash after edit»",
     })
     expect(await getHistoricalUserMoneyStatistics(newPayer.id)).toEqual({

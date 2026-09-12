@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest"
 import {
   formatMoney,
   formatDate,
+  formatCalendarDate,
   formatDateTime,
+  toCalendarDateInputValue,
   toLocalDateInputValue,
   getInitials,
   parseMoneyInput,
@@ -51,6 +53,20 @@ describe("formatDate / formatDateTime", () => {
 
   it("formatDateTime содержит время (часы:минуты)", () => {
     expect(formatDateTime(new Date(2026, 7, 1, 14, 30))).toMatch(/\d{2}:\d{2}/)
+  })
+
+  it("formatCalendarDate displays the stored UTC calendar day", () => {
+    expect(formatCalendarDate("2026-08-01T00:00:00.000Z")).toContain("1 авг.")
+  })
+})
+
+describe("toCalendarDateInputValue", () => {
+  it("keeps the literal API day even when the timestamp has a timezone offset", () => {
+    expect(toCalendarDateInputValue("2026-08-01T23:30:00-07:00")).toBe("2026-08-01")
+  })
+
+  it("returns today's local day for a new calendar input", () => {
+    expect(toCalendarDateInputValue()).toBe(toLocalDateInputValue())
   })
 })
 

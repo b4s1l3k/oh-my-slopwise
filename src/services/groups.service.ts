@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db"
-import { Prisma } from "@prisma/client"
 import { computeGroupDebts } from "@/services/balances.service"
+import { runSerializableTransaction } from "@/lib/serializable-transaction"
 import {
   recordGroupCreated,
   recordGroupMemberJoined,
@@ -147,7 +147,7 @@ export async function updateGroup(
 export async function deleteGroup(groupId: string, userId: string) {
   await assertAdmin(groupId, userId)
 
-  await prisma.$transaction(async (tx) => {
+  await runSerializableTransaction(async (tx) => {
     const admin = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     })
@@ -160,7 +160,7 @@ export async function deleteGroup(groupId: string, userId: string) {
     // Group-owned rows are removed by database cascades. Keeping the cleanup in
     // foreign keys also protects direct/admin deletes outside this service.
     await tx.group.delete({ where: { id: groupId } })
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+  })
 }
 
 export async function addMember(groupId: string, adminId: string, memberId: string) {
@@ -170,7 +170,7 @@ export async function addMember(groupId: string, adminId: string, memberId: stri
   const user = await prisma.user.findUnique({ where: { id: memberId } })
   if (!user) throw new Error("USER_NOT_FOUND")
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     const admin = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId: adminId } },
     })
@@ -248,7 +248,7 @@ export async function removeMember(groupId: string, adminId: string, memberId: s
     })
     await tx.group.update({ where: { id: groupId }, data: { updatedAt: new Date() } })
     return member
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+  })
 }
 
 async function assertAdmin(groupId: string, userId: string) {

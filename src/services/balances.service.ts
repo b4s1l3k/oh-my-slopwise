@@ -38,6 +38,23 @@ export async function computeGroupDebts(groupId: string, db: DbClient = prisma) 
   return calculateSimplifiedDebts(expensesInSettlement, settlementsInSettlement, userNames)
 }
 
+export async function assertNoInactiveMemberBalances(
+  groupId: string,
+  db: DbClient = prisma
+) {
+  const inactiveMembers = await db.groupMember.findMany({
+    where: { groupId, isActive: false },
+    select: { userId: true },
+  })
+  if (inactiveMembers.length === 0) return
+
+  const inactiveUserIds = new Set(inactiveMembers.map((member) => member.userId))
+  const { raw } = await computeGroupDebts(groupId, db)
+  if (raw.some((balance) => inactiveUserIds.has(balance.userId) && balance.balance !== 0)) {
+    throw new Error("INACTIVE_MEMBER_HAS_BALANCE")
+  }
+}
+
 export async function getGroupBalances(groupId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },

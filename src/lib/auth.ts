@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials"
 import { prisma } from "./db"
 import bcrypt from "bcryptjs"
 import authConfig from "./auth.config"
+import { isPasswordWithinBcryptLimit } from "@/lib/validations/auth"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -13,15 +14,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null
+        const email = credentials?.email
+        const password = credentials?.password
+        if (
+          typeof email !== "string" ||
+          typeof password !== "string" ||
+          !email ||
+          !password ||
+          !isPasswordWithinBcryptLimit(password)
+        ) {
+          return null
+        }
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+          where: { email },
         })
         if (!user) return null
 
         const valid = await bcrypt.compare(
-          credentials.password as string,
+          password,
           user.passwordHash
         )
         if (!valid) return null

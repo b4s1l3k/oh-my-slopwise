@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { isValidCalendarDate } from "@/lib/utils/calendar-date"
 
 export const createSettlementSchema = z.object({
   groupId: z.string().min(1, "Укажите группу"),
@@ -9,7 +10,7 @@ export const createSettlementSchema = z.object({
     .positive("Сумма должна быть больше 0")
     .max(2_000_000_000, "Слишком большая сумма"),
   currency: z.string().length(3).default("RUB"),
-  date: z.string().refine((d) => !isNaN(new Date(d).getTime()), { message: "Некорректная дата" }),
+  date: z.string().refine(isValidCalendarDate, { message: "Некорректная дата" }),
   notes: z.string().max(500).optional(),
 })
 

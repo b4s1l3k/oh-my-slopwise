@@ -2,7 +2,7 @@
 import { use, useState, useMemo } from "react"
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
-import { formatMoney, formatDate, getInitials } from "@/lib/utils/format"
+import { formatMoney, formatCalendarDate, getInitials } from "@/lib/utils/format"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -411,7 +411,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{expense.title}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {expense.paidBy.name} · {formatDate(expense.date)}
+                          {expense.paidBy.name} · {formatCalendarDate(expense.date)}
                         </p>
                         {myPosition?.kind === "PAID" && (
                           <p className="text-xs mt-1 font-medium text-green-600">

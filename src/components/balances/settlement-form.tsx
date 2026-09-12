@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2 } from "lucide-react"
-import { parseMoneyInput, formatMoney, toLocalDateInputValue } from "@/lib/utils/format"
+import { parseMoneyInput, formatMoney, toCalendarDateInputValue } from "@/lib/utils/format"
 import { useToast } from "@/components/ui/toast"
 
 type Requisites = {
@@ -35,7 +35,7 @@ export function SettlementForm({
 }: Props) {
   const { toast } = useToast()
   const [amountStr, setAmountStr] = useState((suggestedAmount / 100).toFixed(2))
-  const [date, setDate] = useState(toLocalDateInputValue())
+  const [date, setDate] = useState(toCalendarDateInputValue())
   const [notes, setNotes] = useState("")
 
   const { mutate, isPending } = useMutation({
@@ -51,7 +51,7 @@ export function SettlementForm({
           toUserId,
           amount,
           currency,
-          date: new Date(date).toISOString(),
+          date,
           notes: notes.trim() || undefined,
         }),
       })

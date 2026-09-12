@@ -8,7 +8,8 @@ import {
   getGroupExpenses,
   updateExpense,
 } from "@/services/expenses.service"
-import { createGroup } from "@/services/groups.service"
+import { createGroup, removeMember } from "@/services/groups.service"
+import { createSettlement } from "@/services/settlements.service"
 import type { CreateExpenseInput } from "@/lib/validations/expense"
 
 const runDatabaseTests = process.env.RUN_DB_INTEGRATION_TESTS === "true"
@@ -248,6 +249,87 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
 
       const splits = await prisma.expenseSplit.findMany({ where: { expenseId: expense.id } })
       expect(splits.every((s) => s.amountBase === 500_000)).toBe(true)
+    })
+
+    it("distributes FX rounding remainder while preserving the converted total", async () => {
+      const [admin, b, c] = await Promise.all([
+        makeUser("Round Admin"),
+        makeUser("Round B"),
+        makeUser("Round C"),
+      ])
+      const group = await createGroup(admin.id, {
+        name: "FX rounding group",
+        type: "OTHER",
+        currency: "RUB",
+        memberIds: [b.id, c.id],
+      })
+
+      const expense = await createExpense(
+        group.id,
+        admin.id,
+        expenseInput({
+          amount: 6,
+          currency: "USD",
+          customRate: 0.6,
+          paidById: admin.id,
+          splitType: "EQUAL",
+          splits: [{ userId: admin.id }, { userId: b.id }, { userId: c.id }],
+        })
+      )
+
+      const splits = await prisma.expenseSplit.findMany({
+        where: { expenseId: expense.id },
+        orderBy: { id: "asc" },
+      })
+      expect(expense.amountBase).toBe(4)
+      expect(splits.reduce((sum, split) => sum + (split.amountBase ?? 0), 0)).toBe(4)
+      expect(splits.every((split) => (split.amountBase ?? 0) > 0)).toBe(true)
+      expect(Object.fromEntries(splits.map((split) => [split.userId, split.amountBase]))).toEqual({
+        [admin.id]: 2,
+        [b.id]: 1,
+        [c.id]: 1,
+      })
+    })
+
+    it("rejects totals or splits that convert below the smallest group-currency unit", async () => {
+      const [admin, member] = await Promise.all([
+        makeUser("Tiny Admin"),
+        makeUser("Tiny Member"),
+      ])
+      const group = await createGroup(admin.id, {
+        name: "Tiny FX group",
+        type: "OTHER",
+        currency: "RUB",
+        memberIds: [member.id],
+      })
+
+      await expect(
+        createExpense(
+          group.id,
+          admin.id,
+          expenseInput({
+            amount: 1,
+            currency: "USD",
+            customRate: 0.1,
+            paidById: admin.id,
+            splits: [{ userId: admin.id }],
+          })
+        )
+      ).rejects.toThrow("CONVERTED_AMOUNT_TOO_SMALL")
+
+      await expect(
+        createExpense(
+          group.id,
+          admin.id,
+          expenseInput({
+            amount: 2,
+            currency: "USD",
+            customRate: 0.6,
+            paidById: admin.id,
+            splits: [{ userId: admin.id }, { userId: member.id }],
+          })
+        )
+      ).rejects.toThrow("CONVERTED_AMOUNT_TOO_SMALL")
     })
   })
 
@@ -503,6 +585,58 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
       expect(await getOutstandingDebt(group.id, member.id, admin.id)).toBe(10_000)
     })
 
+    it("rolls back an edit that would recreate a balance for an inactive member", async () => {
+      const [admin, formerPayer] = await Promise.all([
+        makeUser("Inactive Admin"),
+        makeUser("Inactive Payer"),
+      ])
+      const group = await createGroup(admin.id, {
+        name: "Inactive balance guard",
+        type: "OTHER",
+        currency: "RUB",
+        memberIds: [formerPayer.id],
+      })
+      const expense = await createExpense(
+        group.id,
+        admin.id,
+        expenseInput({
+          amount: 10_000,
+          paidById: formerPayer.id,
+          splitType: "EXACT",
+          splits: [{ userId: admin.id, amount: 10_000 }],
+        })
+      )
+      await createSettlement(admin.id, {
+        groupId: group.id,
+        toUserId: formerPayer.id,
+        amount: 10_000,
+        currency: "RUB",
+        date: EXPENSE_DATE_ISO,
+      })
+      await removeMember(group.id, formerPayer.id, formerPayer.id)
+
+      await expect(
+        updateExpense(
+          expense.id,
+          admin.id,
+          expenseInput({
+            title: "Would orphan the settlement",
+            amount: 10_000,
+            paidById: admin.id,
+            splits: [{ userId: admin.id }],
+          })
+        )
+      ).rejects.toThrow("INACTIVE_MEMBER_HAS_BALANCE")
+
+      expect(
+        await prisma.expense.findUnique({
+          where: { id: expense.id },
+          select: { paidById: true, title: true },
+        })
+      ).toMatchObject({ paidById: formerPayer.id, title: "Test expense" })
+      expect(await getOutstandingDebt(group.id, admin.id, formerPayer.id)).toBe(0)
+    })
+
     it("rejects cashPayments supplied to updateExpense with CASH_PAYMENTS_CREATE_ONLY", async () => {
       const [admin, member] = await Promise.all([makeUser("Uc Admin"), makeUser("Uc Member")])
       const group = await createGroup(admin.id, {
@@ -748,10 +882,10 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
     })
   })
 
-  // Наличные — часть траты: при правке валюты/плательщика/даты связанные
-  // расчёты (expenseId != null) должны меняться вместе с тратой.
+  // Связанные наличные расчёты следуют за исправленным плательщиком и датой,
+  // но сохраняют фактически переданную сумму и валюту.
   describe("updateExpense reconciles existing cash-linked settlements", () => {
-    it("rewrites the linked settlement's currency and amountBase when the expense currency changes", async () => {
+    it("preserves linked settlement money when the expense currency changes", async () => {
       await seedRates()
       const [a, b, c] = await Promise.all([makeUser("Cx A"), makeUser("Cx B"), makeUser("Cx C")])
       const group = await createGroup(a.id, {
@@ -775,18 +909,18 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
       )
 
       // Linked settlement created in RUB: amount 3000, amountBase 3000, to the payer.
-      const before = await prisma.settlement.findFirst({ where: { expenseId: expense.id } })
-      expect(before?.currency).toBe("RUB")
-      expect(before?.amountBase).toBe(3_000)
-      expect(before?.toUserId).toBe(a.id)
+      const before = await prisma.settlement.findFirstOrThrow({ where: { expenseId: expense.id } })
+      expect(before.currency).toBe("RUB")
+      expect(before.amountBase).toBe(3_000)
+      expect(before.toUserId).toBe(a.id)
 
-      // Edit currency RUB → USD (factor 90). Cash amount stays 3000 (now USD), so it
-      // still equals b's new share (9000 USD / 3), and the settlement is rewritten.
+      // Edit currency RUB → USD (factor 90). b's new share is 100 USD / 9000 RUB,
+      // so the historical 3000 RUB cash payment remains valid.
       await updateExpense(
         expense.id,
         a.id,
         expenseInput({
-          amount: 9_000,
+          amount: 300,
           currency: "USD",
           paidById: a.id,
           splitType: "EQUAL",
@@ -794,14 +928,15 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
         })
       )
 
-      const after = await prisma.settlement.findFirst({ where: { expenseId: expense.id } })
-      expect(after?.currency).toBe("USD")
-      expect(after?.amountBase).toBe(270_000) // 3000 * 90
-      expect(after?.toUserId).toBe(a.id)
+      const after = await prisma.settlement.findFirstOrThrow({ where: { expenseId: expense.id } })
+      expect(after.amount).toBe(3_000)
+      expect(after.currency).toBe("RUB")
+      expect(after.amountBase).toBe(3_000)
+      expect(after.toUserId).toBe(a.id)
 
-      // b's cash (270000 base) still covers b's share (270000) → b cleared; c owes 270000.
-      expect(await getOutstandingDebt(group.id, b.id, a.id)).toBe(0)
-      expect(await getOutstandingDebt(group.id, c.id, a.id)).toBe(270_000)
+      // b's 3000 RUB cash covers part of the 9000 RUB share; c owes all 9000 RUB.
+      expect(await getOutstandingDebt(group.id, b.id, a.id)).toBe(6_000)
+      expect(await getOutstandingDebt(group.id, c.id, a.id)).toBe(9_000)
 
       // recordSettlementHistory ran on the updated settlement (cash settlement fact exists).
       const cashFacts = await prisma.userStatisticFact.count({
@@ -845,9 +980,22 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
         })
       )
 
-      const after = await prisma.settlement.findFirst({ where: { expenseId: expense.id } })
-      expect(after?.toUserId).toBe(c.id) // settlement now points at the new payer
-      expect(after?.fromUserId).toBe(b.id)
+      const after = await prisma.settlement.findFirstOrThrow({ where: { expenseId: expense.id } })
+      expect(after.toUserId).toBe(c.id) // settlement now points at the new payer
+      expect(after.fromUserId).toBe(b.id)
+
+      const receiverFacts = await prisma.userStatisticFact.findMany({
+        where: {
+          reference: after.id,
+          kind: { in: ["SETTLEMENT_RECEIVED", "MONEY_RETURNED"] },
+        },
+        select: { userId: true, kind: true, value: true, currency: true },
+        orderBy: { kind: "asc" },
+      })
+      expect(receiverFacts).toEqual([
+        { userId: c.id, kind: "MONEY_RETURNED", value: 3_000, currency: "RUB" },
+        { userId: c.id, kind: "SETTLEMENT_RECEIVED", value: 1, currency: null },
+      ])
     })
 
     it("rejects an edit that shrinks a participant's share below their existing cash", async () => {

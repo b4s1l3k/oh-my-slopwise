@@ -2,9 +2,9 @@ import { auth } from "@/lib/auth"
 import { collectUnseenAchievementUnlocks } from "@/services/achievements.service"
 import { NextResponse } from "next/server"
 
-// Досчитывает новые разблокировки и возвращает непоказанные ачивки (помечая их
-// показанными). Фронтенд дёргает этот эндпоинт после мутаций и показывает тост.
-export async function GET() {
+// Явная mutation: досчитывает новые разблокировки, атомарно забирает
+// непоказанные ачивки и помечает их показанными.
+export async function POST() {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

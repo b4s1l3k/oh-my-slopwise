@@ -27,6 +27,10 @@ npm run test:watch
 DB-backed service specs are gated behind `RUN_DB_INTEGRATION_TESTS=true` and MUST
 run with `--no-file-parallelism` (baked into `test:db`): the services use
 Serializable transactions, so parallel test files deadlock against each other.
+They always use `TEST_DATABASE_URL`; its database name must contain a standalone
+`test` marker and must differ from `DATABASE_URL`. The runner derives
+`<application_database>_test` by default, applies pending migrations, and accepts
+an explicit `TEST_DATABASE_URL` override.
 There is no lint script. TypeScript checking: `npx tsc --noEmit`.
 
 Local Postgres runs on port **5433** (not 5432) via `docker-compose up -d`.

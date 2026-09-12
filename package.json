@@ -11,8 +11,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:db": "RUN_DB_INTEGRATION_TESTS=true vitest run --no-file-parallelism",
-    "test:coverage": "RUN_DB_INTEGRATION_TESTS=true vitest run --no-file-parallelism --coverage",
+    "test:db": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx ./scripts/run-db-tests.ts",
+    "test:coverage": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx ./scripts/run-db-tests.ts --coverage",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force",
     "setup": "npm install && prisma generate && prisma migrate dev --name init && tsx prisma/seed.ts"

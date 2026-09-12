@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from "vitest"
 import { prisma } from "@/lib/db"
+import { ACHIEVEMENT_COUNT } from "@/lib/achievements"
 import { createGroup } from "@/services/groups.service"
 import { createExpense } from "@/services/expenses.service"
 import {
@@ -27,19 +28,19 @@ describeDatabase("achievements.service (DB-backed behavioral spec)", () => {
     await prisma.$disconnect()
   })
 
-  it("getUserAchievements returns a summary and the full list, persisting new unlocks", async () => {
+  it("getUserAchievements returns progress without changing persistence", async () => {
     const a = await mkUser("a")
     await createGroup(a.id, { name: `${testPrefix}-g`, type: "TRIP", currency: "RUB", memberIds: [] } as never)
 
     const result = await getUserAchievements(a.id)
-    expect(result.summary.total).toBeGreaterThan(60)
+    expect(result.summary.total).toBe(ACHIEVEMENT_COUNT)
     expect(result.summary.unlocked).toBeGreaterThan(0) // first-group + trip-group at least
     expect(result.achievements.find((x) => x.id === "first-group")?.unlocked).toBe(true)
 
-    // Persisted with notifiedAt = null (not yet shown).
+    // GET is safe: eligible achievements are visible but persistence belongs to
+    // the explicit unseen mutation.
     const persisted = await prisma.userAchievement.findMany({ where: { userId: a.id } })
-    expect(persisted.length).toBe(result.summary.unlocked)
-    expect(persisted.some((r) => r.achievementId === "first-group")).toBe(true)
+    expect(persisted).toEqual([])
   })
 
   it("collectUnseenAchievementUnlocks returns each unlock once, then nothing", async () => {
@@ -76,6 +77,26 @@ describeDatabase("achievements.service (DB-backed behavioral spec)", () => {
       where: { userId: a.id, notifiedAt: null },
     })
     expect(stillUnseen).toBe(0)
+  })
+
+  it("concurrent collectors never return the same unlock twice", async () => {
+    const a = await mkUser("race")
+    await createGroup(a.id, {
+      name: `${testPrefix}-race`,
+      type: "TRIP",
+      currency: "RUB",
+      memberIds: [],
+    } as never)
+
+    const results = await Promise.all([
+      collectUnseenAchievementUnlocks(a.id),
+      collectUnseenAchievementUnlocks(a.id),
+    ])
+    const ids = results.flat().map((achievement) => achievement.id)
+
+    expect(ids.length).toBeGreaterThan(0)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(results.filter((result) => result.length > 0)).toHaveLength(1)
   })
 
   it("открытая СКРЫТАЯ ачивка приходит с настоящими названием и иконкой (без маски)", async () => {

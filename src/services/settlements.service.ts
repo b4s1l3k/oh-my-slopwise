@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db"
-import { Prisma } from "@prisma/client"
-import { getOutstandingDebt } from "@/services/balances.service"
+import { parseCalendarDate } from "@/lib/utils/calendar-date"
+import { runSerializableTransaction } from "@/lib/serializable-transaction"
+import {
+  assertNoInactiveMemberBalances,
+  getOutstandingDebt,
+} from "@/services/balances.service"
 import type { CreateSettlementInput } from "@/lib/validations/settlement"
 import { recordSettlementHistory } from "@/services/statistics-history.service"
 
@@ -9,6 +13,7 @@ export async function createSettlement(
   data: CreateSettlementInput
 ) {
   if (data.toUserId === userId) throw new Error("SELF_SETTLEMENT")
+  const settlementDate = parseCalendarDate(data.date)
 
   const group = await prisma.group.findUnique({
     where: { id: data.groupId },
@@ -20,7 +25,7 @@ export async function createSettlement(
   if (!memberIds.has(userId)) throw new Error("FORBIDDEN")
   if (!memberIds.has(data.toUserId)) throw new Error("RECIPIENT_NOT_MEMBER")
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     const txGroup = await tx.group.findUnique({
       where: { id: data.groupId },
       include: { members: { where: { isActive: true }, select: { userId: true } } },
@@ -43,7 +48,7 @@ export async function createSettlement(
         amount: data.amount,
         currency: txGroup.currency, // расчёт всегда в валюте расчёта группы
         amountBase: data.amount, // уже в валюте расчёта
-        date: new Date(data.date),
+        date: settlementDate,
         notes: data.notes,
       },
       include: {
@@ -68,7 +73,7 @@ export async function createSettlement(
     await tx.group.update({ where: { id: data.groupId }, data: { updatedAt: new Date() } })
 
     return settlement
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+  })
 }
 
 // Сброс зафиксированных расчётов группы (только админ).
@@ -81,13 +86,14 @@ export async function resetSettlements(groupId: string, userId: string) {
   })
   if (!member?.isActive || member.role !== "ADMIN") throw new Error("FORBIDDEN")
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     const txMember = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     })
     if (!txMember?.isActive || txMember.role !== "ADMIN") throw new Error("FORBIDDEN")
 
     const { count } = await tx.settlement.deleteMany({ where: { groupId, expenseId: null } })
+    await assertNoInactiveMemberBalances(groupId, tx)
     if (count > 0) {
       await tx.activityLog.create({
         data: {

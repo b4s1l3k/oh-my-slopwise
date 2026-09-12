@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { SUPPORTED_CURRENCIES } from "@/lib/currencies"
 import { calculateSplits } from "@/lib/utils/split-calculator"
+import { isValidCalendarDate } from "@/lib/utils/calendar-date"
 
 const splitParticipant = z.object({
   userId: z.string().min(1),
@@ -21,7 +22,7 @@ export const createExpenseSchema = z
     // Не задан → пересчёт по курсу ЦБ на дату операции.
     customRate: z.number().positive().max(1_000_000).optional(),
     category: z.string().optional(),
-    date: z.string().refine((d) => !isNaN(new Date(d).getTime()), { message: "Некорректная дата" }),
+    date: z.string().refine(isValidCalendarDate, { message: "Некорректная дата" }),
     paidById: z.string().min(1, "Укажите плательщика"),
     notes: z.string().max(1000).optional(),
     splitType: z.enum(["EQUAL", "EXACT", "PERCENTAGE"]),

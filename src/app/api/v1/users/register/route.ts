@@ -2,17 +2,11 @@ import { prisma } from "@/lib/db"
 import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
-import { z } from "zod"
-
-const schema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1).max(100),
-  password: z.string().min(8, "Пароль минимум 8 символов"),
-})
+import { registrationSchema } from "@/lib/validations/auth"
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null)
-  const parsed = schema.safeParse(body)
+  const parsed = registrationSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 })
   }

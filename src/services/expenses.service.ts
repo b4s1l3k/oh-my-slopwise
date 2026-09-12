@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db"
-import { Prisma } from "@prisma/client"
 import { calculateSplits } from "@/lib/utils/split-calculator"
+import { parseCalendarDate } from "@/lib/utils/calendar-date"
+import { runSerializableTransaction } from "@/lib/serializable-transaction"
 import { getRateToRub } from "@/services/exchange.service"
+import { assertNoInactiveMemberBalances } from "@/services/balances.service"
 import type { CreateExpenseInput } from "@/lib/validations/expense"
 import {
   recordExpenseHistory,
@@ -87,21 +89,48 @@ async function validateExpenseParticipants(
 }
 
 // factor — множитель «валюта траты → валюта расчёта» (кросс-курс на дату)
-function buildSplitRows(data: CreateExpenseInput, factor: number) {
+function buildExpenseAmounts(data: CreateExpenseInput, factor: number) {
   const splitResults = calculateSplits(data.amount, data.splitType, data.splits)
   assertCashPayments(data, splitResults)
-  return splitResults.map((s, i) => {
-    const amountBase = toDatabaseInt(s.amount * factor)
+  const amountBase = toPositiveDatabaseInt(data.amount * factor)
+  const convertedSplits = splitResults.map((split, index) => {
+    const exactAmountBase = split.amount * factor
+    toDatabaseInt(exactAmountBase)
+    const floorAmountBase = Math.floor(exactAmountBase)
     return {
-      userId: s.userId,
-      amount: s.amount,
-      amountBase,
+      index,
+      floorAmountBase,
+      fraction: exactAmountBase - floorAmountBase,
+    }
+  })
+  const allocatedAmountsBase = convertedSplits.map((split) => split.floorAmountBase)
+  const floorTotal = allocatedAmountsBase.reduce((sum, value) => sum + value, 0)
+  const remainder = amountBase - floorTotal
+  if (remainder < 0 || remainder > convertedSplits.length) {
+    throw new Error("SPLIT_TOTAL_MISMATCH")
+  }
+  const allocationOrder = [...convertedSplits].sort(
+    (left, right) => right.fraction - left.fraction || left.index - right.index
+  )
+  for (let i = 0; i < remainder; i++) {
+    allocatedAmountsBase[allocationOrder[i].index] += 1
+  }
+  if (splitResults.some((split, index) => split.amount > 0 && allocatedAmountsBase[index] === 0)) {
+    throw new Error("CONVERTED_AMOUNT_TOO_SMALL")
+  }
+
+  const splitRows = splitResults.map((split, index) => {
+    return {
+      userId: split.userId,
+      amount: split.amount,
+      amountBase: allocatedAmountsBase[index],
       percentage:
         data.splitType === "PERCENTAGE"
-          ? (data.splits[i] as { userId: string; percentage: number }).percentage
+          ? (data.splits[index] as { userId: string; percentage: number }).percentage
           : undefined,
     }
   })
+  return { amountBase, splitRows }
 }
 
 function toDatabaseInt(value: number) {
@@ -109,6 +138,12 @@ function toDatabaseInt(value: number) {
   if (!Number.isSafeInteger(rounded) || rounded < 0 || rounded > MAX_DATABASE_INT) {
     throw new Error("CONVERTED_AMOUNT_TOO_LARGE")
   }
+  return rounded
+}
+
+function toPositiveDatabaseInt(value: number) {
+  const rounded = toDatabaseInt(value)
+  if (rounded === 0) throw new Error("CONVERTED_AMOUNT_TOO_SMALL")
   return rounded
 }
 
@@ -144,11 +179,12 @@ async function conversionFactor(from: string, to: string, date: Date): Promise<n
 // Возвращает и фактор для расчёта, и customRate для сохранения (null = курс ЦБ).
 async function resolveFactor(
   data: CreateExpenseInput,
-  settlementCurrency: string
+  settlementCurrency: string,
+  expenseDate: Date
 ): Promise<{ factor: number; customRate: number | null }> {
   if (data.currency === settlementCurrency) return { factor: 1, customRate: null }
   if (data.customRate != null) return { factor: data.customRate, customRate: data.customRate }
-  const factor = await conversionFactor(data.currency, settlementCurrency, new Date(data.date))
+  const factor = await conversionFactor(data.currency, settlementCurrency, expenseDate)
   return { factor, customRate: null }
 }
 
@@ -158,10 +194,11 @@ export async function createExpense(
   data: CreateExpenseInput
 ) {
   const settlementCurrency = await validateExpenseParticipants(groupId, userId, data)
-  const { factor, customRate } = await resolveFactor(data, settlementCurrency)
-  const splitRows = buildSplitRows(data, factor)
+  const expenseDate = parseCalendarDate(data.date)
+  const { factor, customRate } = await resolveFactor(data, settlementCurrency, expenseDate)
+  const { amountBase, splitRows } = buildExpenseAmounts(data, factor)
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     // Re-validate membership inside the transaction (A4 race guard)
     const txGroup = await tx.group.findUnique({
       where: { id: groupId },
@@ -182,11 +219,11 @@ export async function createExpense(
         title: data.title,
         amount: data.amount,
         currency: data.currency, // валюта конкретной траты
-        amountBase: toDatabaseInt(data.amount * factor), // в валюте расчёта группы
+        amountBase, // в валюте расчёта группы
         customRate, // ручной курс или null (курс ЦБ)
         category: data.category,
         splitType: data.splitType,
-        date: new Date(data.date),
+        date: expenseDate,
         notes: data.notes,
         splits: { create: splitRows },
       },
@@ -220,8 +257,8 @@ export async function createExpense(
             toUserId: data.paidById,
             amount: cp.amount,
             currency: data.currency,
-            amountBase: toDatabaseInt(cp.amount * factor),
-            date: new Date(data.date),
+            amountBase: toPositiveDatabaseInt(cp.amount * factor),
+            date: expenseDate,
             notes: `К расходу «${data.title}»`,
           },
         })
@@ -262,7 +299,7 @@ export async function createExpense(
 
     await tx.group.update({ where: { id: groupId }, data: { updatedAt: new Date() } })
     return expense
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+  })
 }
 
 export async function updateExpense(
@@ -288,8 +325,9 @@ export async function updateExpense(
 
   const settlementCurrency = await validateExpenseParticipants(existing.groupId, userId, data)
   if (data.cashPayments?.length) throw new Error("CASH_PAYMENTS_CREATE_ONLY")
-  const { factor, customRate } = await resolveFactor(data, settlementCurrency)
-  const splitRows = buildSplitRows(data, factor)
+  const expenseDate = parseCalendarDate(data.date)
+  const { factor, customRate } = await resolveFactor(data, settlementCurrency, expenseDate)
+  const { amountBase, splitRows } = buildExpenseAmounts(data, factor)
 
   // Сводка изменений для истории (что именно поменяли)
   const changes: string[] = []
@@ -298,10 +336,10 @@ export async function updateExpense(
   if (existing.currency !== data.currency) changes.push("валюта")
   if (existing.splitType !== data.splitType) changes.push("способ разбивки")
   if (existing.paidById !== data.paidById) changes.push("плательщик")
-  if (existing.date.getTime() !== new Date(data.date).getTime()) changes.push("дата")
+  if (existing.date.getTime() !== expenseDate.getTime()) changes.push("дата")
   if ((existing.customRate ?? null) !== (customRate ?? null)) changes.push("курс")
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     // Re-validate membership inside the transaction (A4 race guard)
     const txGroup = await tx.group.findUnique({
       where: { id: existing.groupId },
@@ -321,7 +359,7 @@ export async function updateExpense(
       where: { id: expenseId },
       include: {
         settlements: {
-          select: { id: true, fromUserId: true, amount: true },
+          select: { id: true, fromUserId: true, amount: true, amountBase: true },
         },
         splits: { select: { userId: true } },
       },
@@ -337,31 +375,33 @@ export async function updateExpense(
     if (!txIds.has(data.paidById)) throw new Error("PAYER_NOT_MEMBER")
     for (const s of data.splits) if (!txIds.has(s.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
 
-    const splitAmounts = new Map(splitRows.map((split) => [split.userId, split.amount]))
-    const cashByUser = new Map<string, number>()
+    const splitAmountsBase = new Map(
+      splitRows.map((split) => [split.userId, split.amountBase])
+    )
+    const cashByUserBase = new Map<string, number>()
     for (const settlement of txExisting.settlements) {
-      cashByUser.set(
+      cashByUserBase.set(
         settlement.fromUserId,
-        (cashByUser.get(settlement.fromUserId) ?? 0) + settlement.amount
+        (cashByUserBase.get(settlement.fromUserId) ?? 0) +
+          (settlement.amountBase ?? settlement.amount)
       )
     }
-    for (const [cashUserId, cashAmount] of cashByUser) {
-      const share = splitAmounts.get(cashUserId)
-      if (cashUserId === data.paidById || share == null || cashAmount > share) {
+    for (const [cashUserId, cashAmountBase] of cashByUserBase) {
+      const shareBase = splitAmountsBase.get(cashUserId)
+      if (cashUserId === data.paidById || shareBase == null || cashAmountBase > shareBase) {
         throw new Error("CASH_PAYMENT_INVALID")
       }
     }
 
-    // Наличные являются частью расхода: при исправлении плательщика, валюты,
-    // курса или даты связанные расчёты должны измениться вместе с ним.
+    // Связанный наличный расчёт хранит деньги, которые действительно передали.
+    // При исправлении расхода меняются его получатель и описательные поля, но не
+    // исходные amount/currency/amountBase расчёта.
     for (const settlement of txExisting.settlements) {
       const updatedSettlement = await tx.settlement.update({
         where: { id: settlement.id },
         data: {
           toUserId: data.paidById,
-          currency: data.currency,
-          amountBase: toDatabaseInt(settlement.amount * factor),
-          date: new Date(data.date),
+          date: expenseDate,
           notes: `К расходу «${data.title}»`,
         },
       })
@@ -377,16 +417,18 @@ export async function updateExpense(
         title: data.title,
         amount: data.amount,
         currency: data.currency,
-        amountBase: toDatabaseInt(data.amount * factor),
+        amountBase,
         customRate,
         category: data.category,
         splitType: data.splitType,
-        date: new Date(data.date),
+        date: expenseDate,
         notes: data.notes,
         splits: { create: splitRows },
       },
       include: expenseInclude,
     })
+
+    await assertNoInactiveMemberBalances(existing.groupId, tx)
 
     await tx.activityLog.create({
       data: {
@@ -421,11 +463,11 @@ export async function updateExpense(
     })
     await tx.group.update({ where: { id: existing.groupId }, data: { updatedAt: new Date() } })
     return expense
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+  })
 }
 
 export async function deleteExpense(expenseId: string, userId: string) {
-  await prisma.$transaction(async (tx) => {
+  await runSerializableTransaction(async (tx) => {
     const expense = await tx.expense.findUnique({ where: { id: expenseId } })
     if (!expense) throw new Error("NOT_FOUND")
 
@@ -448,6 +490,7 @@ export async function deleteExpense(expenseId: string, userId: string) {
       },
     })
     await tx.expense.delete({ where: { id: expenseId } })
+    await assertNoInactiveMemberBalances(expense.groupId, tx)
     await tx.group.update({ where: { id: expense.groupId }, data: { updatedAt: new Date() } })
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+  })
 }

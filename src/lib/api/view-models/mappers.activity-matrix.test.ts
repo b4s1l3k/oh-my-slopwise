@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { ActivityDto } from "@/lib/api/v1/response-dtos"
+import type { ActivityDto } from "@contract/v1"
 import { mapActivityItemViewModel } from "./mappers"
 
 const base: Omit<ActivityDto, "metadata"> = {

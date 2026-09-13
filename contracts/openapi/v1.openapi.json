@@ -22,11 +22,41 @@
     { "name": "Balances" },
     { "name": "Settlements" },
     { "name": "Invites" },
+    { "name": "Authentication" },
     { "name": "Users" },
     { "name": "Achievements" },
     { "name": "Feedback" }
   ],
   "paths": {
+    "/api/v1/auth/credentials": {
+      "post": {
+        "operationId": "authenticateCredentialsV1",
+        "tags": ["Authentication"],
+        "summary": "Verify credentials for the web BFF and return session claims",
+        "description": "Transitional BFF boundary. It creates no HTTP session and returns the same 401 response for unknown users and invalid passwords.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AuthenticateCredentialsRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verified identity claims used to create the web session",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthenticateCredentialsResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
     "/api/v1/admin/feedback": {
       "get": {
         "operationId": "listAdminFeedbackV1",
@@ -1360,6 +1390,20 @@
           "message": { "type": "string", "minLength": 10, "maxLength": 2000 }
         }
       },
+      "AuthenticateCredentialsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "x-maxUtf8Bytes": 72,
+            "description": "Must occupy at most 72 UTF-8 bytes while the legacy credentials backend uses bcrypt."
+          }
+        }
+      },
       "RegisterUserRequest": {
         "type": "object",
         "required": ["email", "name", "password"],
@@ -1609,6 +1653,26 @@
         "required": ["user"],
         "properties": {
           "user": { "$ref": "#/components/schemas/PublicRegisteredUser" }
+        }
+      },
+      "AuthenticatedIdentity": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "email", "name", "avatarUrl", "role"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "email": { "type": "string", "format": "email" },
+          "name": { "type": "string" },
+          "avatarUrl": { "type": ["string", "null"], "format": "uri" },
+          "role": { "type": "string", "enum": ["USER", "ADMIN"] }
+        }
+      },
+      "AuthenticateCredentialsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["user"],
+        "properties": {
+          "user": { "$ref": "#/components/schemas/AuthenticatedIdentity" }
         }
       },
       "UserSearchResponse": {

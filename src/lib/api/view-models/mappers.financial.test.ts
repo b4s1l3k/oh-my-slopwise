@@ -7,7 +7,7 @@ import type {
   GroupMemberDto,
   RequisitesDto,
   SettlementDto,
-} from "@/lib/api/v1/response-dtos"
+} from "@contract/v1"
 import {
   mapBalanceOverviewViewModel,
   mapExpensePageViewModel,

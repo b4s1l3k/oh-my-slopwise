@@ -5,7 +5,7 @@ import type {
   ProfileDto,
   ProfileStatisticsDto,
   RegisteredUserDto,
-} from "@/lib/api/v1/response-dtos"
+} from "@contract/v1"
 import {
   mapAchievementCollectionViewModel,
   mapAchievementUnlockViewModel,

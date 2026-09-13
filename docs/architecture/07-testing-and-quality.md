@@ -20,13 +20,15 @@
 |---|---|
 | `npm test` | Быстрые unit/mocked suites; DB suites пропускаются |
 | `npm run typecheck` | TypeScript strict typecheck без emit |
+| `npm run contract:check` | Generated TypeScript transport types байт-в-байт соответствуют OpenAPI |
 | `npm run test:contract` | OpenAPI/source parity и mocked HTTP route contract tests |
 | `npm run test:golden` | Schema/runner tests и 186 language-neutral vectors против legacy adapter |
 | `npm run test:watch` | Интерактивный Vitest |
 | `npm run test:db` | Полный suite на `TEST_DATABASE_URL` с последовательным выполнением файлов |
 | `npm run test:coverage` | Полный DB suite на `TEST_DATABASE_URL` с V8 coverage |
-| `npm run test:e2e` | 221 HTTP/browser E2E на чистой `splitwise_e2e` с локальным Next.js dev server |
-| `npm run test:e2e:production` | Те же 221 E2E против собранного standalone server, как в Docker image |
+| `npm run test:e2e` | 225 HTTP/browser E2E на чистой `splitwise_e2e` с локальным Next.js dev server |
+| `npm run test:e2e:production` | Те же 225 E2E против собранного standalone server, как в Docker image |
+| `npm run test:e2e:candidate` | Тот же suite против внешнего replacement stack через язык-независимый fixture adapter |
 | `npm run test:e2e:headed` | Тот же E2E-контур с видимым Chrome |
 | `npm run test:e2e:ui` | Интерактивный Playwright UI |
 | `npx tsc --noEmit` | Проверка типов |
@@ -41,12 +43,12 @@ DB runner выставляет `RUN_DB_INTEGRATION_TESTS=true`, применяе
 Snapshot: 13 сентября 2026 года, working tree на основе baseline `d0fa6d9` с OpenAPI v1 contract.
 
 ```text
-Fast run:   49 files passed, 14 skipped; 814 tests passed, 132 skipped
-Full run:   63 files passed; 946 tests passed
-Coverage:   92.24% statements; 85.97% branches; 96.64% functions; 95.14% lines
-Contract:   84 tests passed
+Fast run:   54 files passed, 14 skipped; 858 tests passed, 132 skipped
+Full run:   68 files passed; 990 tests passed
+Coverage:   92.37% statements; 86.25% branches; 96.56% functions; 95.19% lines
+Contract:   96 tests passed
 Golden:     9 runner/schema tests; 186/186 vectors with legacy adapter
-E2E:        71 spec files; 221 tests against the standalone production server
+E2E:        72 spec files; 225 tests against the standalone production server
 TypeScript: no errors
 Build:      passed
 ```
@@ -147,11 +149,15 @@ Playwright-тесты разнесены по предметным файлам 
 имена сущностей, но одну локальную БД. При ошибке сохраняются trace и screenshot;
 HTML-report пишется в `playwright-report`. Оба каталога артефактов исключены из Git.
 
+В candidate-режиме global setup не подключает Prisma и не управляет схемой нового
+backend. Он передаёт versioned JSON fixture внешнему executable из
+`E2E_FIXTURE_ADAPTER`; протокол и JSON Schema находятся в `contracts/e2e`.
+
 ## Test pyramid
 
 ```mermaid
 flowchart TB
-    e2e[Real HTTP + browser E2E\n221 scenarios]
+    e2e[Real HTTP + browser E2E\n225 scenarios]
     runtime[HTTP/OpenAPI schema contracts\n84 прошли]
     golden[Language-neutral golden\n186 vectors]
     db[DB service integration\n132 прошли]

@@ -126,12 +126,17 @@ describe("the canonical /api/v1 OpenAPI snapshot", () => {
     expect(new Set(operationIds).size).toBe(operationIds.length)
   })
 
-  it("keeps registration public while other operations inherit cookie authentication", () => {
+  it("keeps authentication entry points public while other operations inherit cookie authentication", () => {
     const registration = document.paths?.["/api/v1/users/register"]?.post
+    const credentials = document.paths?.["/api/v1/auth/credentials"]?.post
     expect(registration?.security).toEqual([])
+    expect(credentials?.security).toEqual([])
 
     for (const { key, operation } of documented) {
-      if (key === "post /api/v1/users/register") continue
+      if (
+        key === "post /api/v1/users/register" ||
+        key === "post /api/v1/auth/credentials"
+      ) continue
       expect(operation.security, key).toBeUndefined()
     }
   })

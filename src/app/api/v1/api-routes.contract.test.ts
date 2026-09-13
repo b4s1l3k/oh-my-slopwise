@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   bcryptHash: vi.fn(),
   buildProfileStatistics: vi.fn(),
+  authentication: {
+    authenticateCredentials: vi.fn(),
+  },
   groups: {
     getUserGroups: vi.fn(),
     createGroup: vi.fn(),
@@ -73,6 +76,7 @@ vi.mock("@/lib/auth", () => ({ auth: mocks.auth }))
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }))
 vi.mock("bcryptjs", () => ({ default: { hash: mocks.bcryptHash } }))
 vi.mock("@/lib/statistics", () => ({ buildProfileStatistics: mocks.buildProfileStatistics }))
+vi.mock("@/services/authentication.service", () => mocks.authentication)
 vi.mock("@/services/groups.service", () => mocks.groups)
 vi.mock("@/services/expenses.service", () => mocks.expenses)
 vi.mock("@/services/balances.service", () => mocks.balances)
@@ -83,6 +87,7 @@ vi.mock("@/services/achievements.service", () => mocks.achievements)
 vi.mock("@/services/statistics.service", () => mocks.statistics)
 
 import * as adminFeedbackRoute from "@/app/api/v1/admin/feedback/route"
+import * as credentialsRoute from "@/app/api/v1/auth/credentials/route"
 import * as balanceOverviewRoute from "@/app/api/v1/balances/overview/route"
 import * as expenseRoute from "@/app/api/v1/expenses/[id]/route"
 import * as feedbackRoute from "@/app/api/v1/feedback/route"
@@ -286,6 +291,81 @@ describe("/api/v1 authentication contract", () => {
   it.each(protectedOperations)("%s returns the same 401 JSON envelope", async (_name, operationId, invoke) => {
     mocks.auth.mockResolvedValue(null)
     await expectJson(await invoke(), 401, { error: "Unauthorized" }, operationId)
+  })
+})
+
+describe("/api/v1 credentials boundary", () => {
+  const credentials = {
+    email: "user@example.com",
+    password: "safe-password",
+  }
+
+  it("returns only stable session claims for valid credentials", async () => {
+    const user = {
+      id: "user-1",
+      email: "user@example.com",
+      name: "Alice",
+      avatarUrl: null,
+      role: "USER" as const,
+    }
+    mocks.authentication.authenticateCredentials.mockResolvedValue(user)
+
+    await expectJson(
+      await credentialsRoute.POST(
+        request("/api/v1/auth/credentials", "POST", credentials)
+      ),
+      200,
+      { user },
+      "authenticateCredentialsV1"
+    )
+    expect(mocks.authentication.authenticateCredentials).toHaveBeenCalledWith(
+      credentials.email,
+      credentials.password
+    )
+  })
+
+  it.each([
+    {},
+    { email: "not-an-email", password: "safe-password" },
+    { ...credentials, unexpected: true },
+  ])("uses one 401 envelope for malformed credential input", async (body) => {
+    await expectJson(
+      await credentialsRoute.POST(
+        request("/api/v1/auth/credentials", "POST", body)
+      ),
+      401,
+      { error: "Unauthorized" },
+      "authenticateCredentialsV1"
+    )
+    expect(mocks.authentication.authenticateCredentials).not.toHaveBeenCalled()
+  })
+
+  it("does not distinguish an unknown user from an invalid password", async () => {
+    mocks.authentication.authenticateCredentials.mockResolvedValue(null)
+
+    await expectJson(
+      await credentialsRoute.POST(
+        request("/api/v1/auth/credentials", "POST", credentials)
+      ),
+      401,
+      { error: "Unauthorized" },
+      "authenticateCredentialsV1"
+    )
+  })
+
+  it("maps an identity provider failure without leaking details", async () => {
+    mocks.authentication.authenticateCredentials.mockRejectedValue(
+      new Error("database unavailable")
+    )
+
+    await expectJson(
+      await credentialsRoute.POST(
+        request("/api/v1/auth/credentials", "POST", credentials)
+      ),
+      500,
+      { error: { message: "Internal server error" } },
+      "authenticateCredentialsV1"
+    )
   })
 })
 

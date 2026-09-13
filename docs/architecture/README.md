@@ -1,6 +1,6 @@
 # Архитектура SLOPwise Personal
 
-Документы `01`–`08` описывают фактическую архитектуру приложения по состоянию на 13 сентября 2026 года и построены по исходному коду, Prisma-схеме, миграциям, конфигурации и тестам. Документ `09` — отдельное предложение по целевой архитектуре, а не реализованное состояние. Планы из соседних файлов `docs/*-plan.md` также не считаются реализованной архитектурой, если соответствующего кода ещё нет.
+Документы `01`–`08` описывают фактическую архитектуру приложения по состоянию на 13 сентября 2026 года и построены по исходному коду, Prisma-схеме, миграциям, конфигурации и тестам. Документ `09` — отдельное предложение по целевой архитектуре, а `10` фиксирует уже реализованную migration boundary. Планы из соседних файлов `docs/*-plan.md` также не считаются реализованной архитектурой, если соответствующего кода ещё нет.
 
 ## Навигация
 
@@ -13,6 +13,7 @@
 7. [Тестирование и качество](07-testing-and-quality.md) — тестовые контуры, команды и покрытие.
 8. [Ограничения и развитие](08-known-constraints.md) — технические ограничения, расхождения документации и планы.
 9. [Целевая архитектура и полное переписывание](09-target-architecture-and-full-rewrite.md) — Kotlin backend, client-agnostic API, web/WebView/native-клиенты и критерии будущего выделения сервисов.
+10. [Граница frontend/backend](10-frontend-backend-boundary.md) — generated OpenAPI types, запреты зависимостей и запуск E2E против backend-кандидата.
 
 ### Принятые ADR
 
@@ -62,7 +63,8 @@ React page/component
 | Прикладная логика | `src/services` | Use cases, права на доменные операции, транзакции, orchestration |
 | Чистая логика и cross-cutting helpers | `src/lib` | Расчёты, схемы Zod, auth/config, Prisma singleton, форматирование |
 | UI | `src/components` | Формы, layout, профиль, достижения, переиспользуемые UI primitives |
-| Общие типы | `src/types` | Алиасы явных API DTO; Prisma-типы в public type surface не используются |
+| HTTP-контракт | `contracts/openapi`, `contracts/typescript` | Canonical OpenAPI, generated transport types и язык-независимые test protocols |
+| Общие UI-типы | `src/types` | Типы web-приложения; Prisma-типы в public type surface не используются |
 | Модель БД | `prisma/schema.prisma` | Сущности, отношения, индексы и referential actions |
 | Эволюция БД | `prisma/migrations` | Последовательность SQL-миграций и backfill статистики |
 | Развёртывание | `Dockerfile`, `docker-entrypoint.sh` | Standalone image, применение миграций, запуск Next.js |
@@ -83,6 +85,6 @@ React page/component
 ## Статус проверки
 
 - На 13 сентября 2026 года working tree основан на baseline `d0fa6d9`; `npx tsc --noEmit` проходит без ошибок.
-- Обычный `npm test`: 448 тестов проходят, 101 DB-зависимый сценарий пропускается по feature flag.
+- Обычный `npm test`: 858 тестов проходят, 132 DB-зависимых сценария пропускаются по feature flag.
 - Production `npm run build` проходит.
-- Полный `npm run test:db` на защищённом `TEST_DATABASE_URL`: 549 тестов проходят; guard запрещает application DB и имя без маркера `test`.
+- Полный `npm run test:coverage` на защищённом `TEST_DATABASE_URL`: 990 тестов проходят; guard запрещает application DB и имя без маркера `test`.

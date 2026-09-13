@@ -8,7 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2 } from "lucide-react"
 import { parseMoneyInput, toCalendarDateInputValue } from "@/lib/utils/format"
 import { useToast } from "@/components/ui/toast"
-import { CURRENCY_META, isSupportedCurrency } from "@/lib/currencies"
+import {
+  CURRENCY_META,
+  isSupportedCurrency,
+  type SupportedCurrency,
+} from "@/lib/currencies"
 import { CurrencySelect } from "@/components/ui/currency-select"
 import { ApiError, getApiErrorMessage } from "@/lib/api/client/api-error"
 import { useCreateExpense, useUpdateExpense } from "@/hooks/api/use-expenses"
@@ -22,7 +26,7 @@ type SplitType = ExpenseViewModel["splitType"]
 type Props = {
   groupId: string
   members: UserSummaryViewModel[]
-  currency: string
+  currency: SupportedCurrency
   expense?: ExpenseViewModel // если передан — режим редактирования
   // Последний ручной курс каждого плательщика по валютам: rateBook[userId][currency]
   rateBook?: Record<string, Record<string, number>>
@@ -39,7 +43,9 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
 
   const [title, setTitle] = useState(expense?.title ?? "")
   const [amountStr, setAmountStr] = useState(expense ? String(expense.amount / 100) : "")
-  const [expenseCurrency, setExpenseCurrency] = useState(expense?.currency ?? currency)
+  const [expenseCurrency, setExpenseCurrency] = useState<SupportedCurrency>(
+    expense && isSupportedCurrency(expense.currency) ? expense.currency : currency
+  )
   const [rateStr, setRateStr] = useState(
     expense?.customRate != null ? String(expense.customRate) : ""
   )

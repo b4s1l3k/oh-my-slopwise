@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { AchievementDto, ProfileStatisticsDto } from "./response-dtos"
+import type { AchievementDto, ProfileStatisticsDto } from "@contract/v1"
 import {
   toAcceptInviteResponse,
   toAchievementCollectionResponse,

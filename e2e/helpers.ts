@@ -1,4 +1,8 @@
 import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test"
+import {
+  openApiOperationIdForRequest,
+  validateOpenApiResponse,
+} from "../contracts/openapi/openapi-test-validator"
 
 export const users = {
   admin: { email: "admin.e2e@example.com", name: "Админ E2E" },
@@ -44,7 +48,14 @@ export async function apiJson<T>(
     data: options?.body,
   })
   expect(response.status(), await response.text()).toBe(options?.expectedStatus ?? 200)
-  return response.json() as Promise<T>
+  const body = await response.json() as T
+  const operationId = openApiOperationIdForRequest(options?.method ?? "GET", path)
+  const validation = validateOpenApiResponse(operationId, response.status(), body)
+  expect(
+    validation.valid,
+    `${operationId}:${response.status()} violated OpenAPI: ${JSON.stringify(validation.errors)}`
+  ).toBe(true)
+  return body
 }
 
 export async function createGroup(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   documentedOpenApiRequestOperationIds,
+  openApiOperationIdForRequest,
   validateOpenApiRequest,
   validateOpenApiResponse,
 } from "./openapi-test-validator"
@@ -23,6 +24,10 @@ const validExpenseCommand = {
 }
 
 const requestExamples: Array<[string, Record<string, unknown>]> = [
+  [
+    "authenticateCredentialsV1",
+    { email: "user@example.com", password: "safe-password" },
+  ],
   [
     "createGroupV1",
     {
@@ -63,6 +68,25 @@ function expectInvalid(result: ReturnType<typeof validateOpenApiRequest>): void 
   expect(result.errors).not.toHaveLength(0)
 }
 
+describe("OpenAPI operation routing", () => {
+  it.each([
+    ["GET", "/api/v1/groups?limit=10", "listGroupsV1"],
+    ["patch", "/api/v1/groups/group%2Fid", "updateGroupV1"],
+    ["POST", "https://candidate.example/api/v1/invites/token/accept", "acceptInviteV1"],
+  ])("resolves %s %s to its operationId", (method, url, operationId) => {
+    expect(openApiOperationIdForRequest(method, url)).toBe(operationId)
+  })
+
+  it("rejects undocumented method and path combinations", () => {
+    expect(() => openApiOperationIdForRequest("PUT", "/api/v1/groups")).toThrow(
+      "No OpenAPI operation for PUT /api/v1/groups"
+    )
+    expect(() => openApiOperationIdForRequest("GET", "/api/v1/unknown")).toThrow(
+      "No OpenAPI operation for GET /api/v1/unknown"
+    )
+  })
+})
+
 describe("OpenAPI request JSON Schema", () => {
   it("has a canonical example for every operation with a JSON request body", () => {
     expect(requestExamples.map(([operationId]) => operationId).sort()).toEqual(
@@ -75,7 +99,12 @@ describe("OpenAPI request JSON Schema", () => {
   })
 
   it.each(requestExamples)("accepts fields that the v1 transport strips in %s", (operationId, body) => {
-    expectValid(validateOpenApiRequest(operationId, { ...body, persistenceOnly: true }))
+    const result = validateOpenApiRequest(operationId, { ...body, persistenceOnly: true })
+    if (operationId === "authenticateCredentialsV1") {
+      expectInvalid(result)
+    } else {
+      expectValid(result)
+    }
   })
 
   it("pins required fields, enums, scalar types and integer money", () => {
@@ -106,6 +135,14 @@ describe("OpenAPI request JSON Schema", () => {
   })
 
   it("enforces the bcrypt password limit in UTF-8 bytes, not JavaScript characters", () => {
+    expectValid(validateOpenApiRequest("authenticateCredentialsV1", {
+      email: "new@example.com",
+      password: "я".repeat(36),
+    }))
+    expectInvalid(validateOpenApiRequest("authenticateCredentialsV1", {
+      email: "new@example.com",
+      password: "я".repeat(37),
+    }))
     expectValid(validateOpenApiRequest("registerUserV1", {
       email: "new@example.com",
       name: "New User",

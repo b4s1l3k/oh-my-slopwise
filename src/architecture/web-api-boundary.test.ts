@@ -6,8 +6,11 @@ import { describe, expect, it } from "vitest"
 const projectRoot = resolve(import.meta.dirname, "../..")
 const sourceRoot = resolve(projectRoot, "src")
 const httpClientPath = "src/lib/api/client/http-client.ts"
-const transportDtoPath = "src/lib/api/v1/response-dtos.ts"
-const externalNetworkAdapters = new Set(["src/services/exchange.service.ts"])
+const transportContractModule = "@contract/v1"
+const externalNetworkAdapters = new Set([
+  "src/lib/auth/credentials-client.ts",
+  "src/services/exchange.service.ts",
+])
 const reactQueryUiAdapters = new Set([
   "src/components/achievements/achievement-watcher.tsx",
   "src/components/providers.tsx",
@@ -28,6 +31,24 @@ const forbiddenHttpPackages = new Set([
   "superagent",
   "undici",
 ])
+const forbiddenWebImportPrefixes = [
+  "@/app/api",
+  "@/lib/api/v1",
+  "@/lib/api-errors",
+  "@/lib/db",
+  "@/lib/serializable-transaction",
+  "@/lib/validations",
+  "@/services",
+  "@prisma/client",
+  "bcryptjs",
+]
+const forbiddenBackendImportPrefixes = [
+  "@/components",
+  "@/hooks",
+  "@/lib/api/client",
+  "@/lib/api/view-models",
+  "@/lib/forms",
+]
 const forbiddenLocalTransportTypeNames = new Set([
   "Achievement",
   "Debt",
@@ -88,6 +109,60 @@ function resolvedModulePath(sourcePath: string, importedModule: string): string 
   return importedModule
 }
 
+function resolvedSourceFile(
+  sourcePath: string,
+  importedModule: string,
+  sourceSet: ReadonlySet<string>
+): string | undefined {
+  const unresolved = resolvedModulePath(sourcePath, importedModule)
+  if (!unresolved.startsWith("src/")) return undefined
+  const candidates = [
+    unresolved,
+    `${unresolved}.ts`,
+    `${unresolved}.tsx`,
+    `${unresolved}/index.ts`,
+    `${unresolved}/index.tsx`,
+  ]
+  return candidates.find((candidate) => sourceSet.has(candidate))
+}
+
+function importedModules(path: string): string[] {
+  const source = ts.createSourceFile(
+    path,
+    readFileSync(path, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind(path)
+  )
+  const modules: string[] = []
+  const visit = (node: ts.Node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      modules.push(node.moduleSpecifier.text)
+    }
+    if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      modules.push(node.moduleSpecifier.text)
+    }
+    if (
+      ts.isCallExpression(node) &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0]) &&
+      (
+        node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require")
+      )
+    ) {
+      modules.push(node.arguments[0].text)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  return modules
+}
+
 function isHttpClientModule(sourcePath: string, importedModule: string): boolean {
   return withoutScriptExtension(resolvedModulePath(sourcePath, importedModule)) ===
     withoutScriptExtension(httpClientPath)
@@ -100,8 +175,39 @@ function isDomainApiClientModule(sourcePath: string, importedModule: string): bo
 }
 
 function isTransportDtoModule(sourcePath: string, importedModule: string): boolean {
-  return withoutScriptExtension(resolvedModulePath(sourcePath, importedModule)) ===
-    withoutScriptExtension(transportDtoPath)
+  return importedModule === transportContractModule ||
+    importedModule.startsWith("@contract/")
+}
+
+function startsWithModule(importedModule: string, prefix: string): boolean {
+  return importedModule === prefix || importedModule.startsWith(`${prefix}/`)
+}
+
+function isWebModule(file: string): boolean {
+  return (
+    (file.startsWith("src/app/") && !file.startsWith("src/app/api/")) ||
+    file.startsWith("src/app/api/auth/") ||
+    file.startsWith("src/components/") ||
+    file.startsWith("src/hooks/") ||
+    file === "src/lib/auth.ts" ||
+    file === "src/lib/auth.config.ts" ||
+    file.startsWith("src/lib/auth/") ||
+    file.startsWith("src/lib/api/client/") ||
+    file.startsWith("src/lib/api/view-models/") ||
+    file.startsWith("src/lib/forms/")
+  )
+}
+
+function isBackendModule(file: string): boolean {
+  return (
+    file.startsWith("src/app/api/v1/") ||
+    file.startsWith("src/services/") ||
+    file === "src/lib/db.ts" ||
+    file === "src/lib/serializable-transaction.ts" ||
+    file === "src/lib/api-errors.ts" ||
+    file.startsWith("src/lib/api/v1/") ||
+    file.startsWith("src/lib/validations/")
+  )
 }
 
 function isForbiddenHttpPackage(importedModule: string): boolean {
@@ -129,6 +235,11 @@ function inspectSource(path: string): Violation[] {
   const networkAllowed = file === httpClientPath || externalNetworkAdapters.has(file)
   const isUiModule = file.startsWith("src/components/") || /\/page\.[cm]?[jt]sx?$/.test(file)
   const isFeatureHook = file.startsWith("src/hooks/api/")
+  const webModule = isWebModule(file)
+  const backendModule = isBackendModule(file)
+  const operationTypedClient =
+    file.startsWith("src/lib/api/client/") ||
+    file === "src/lib/auth/credentials-client.ts"
 
   const report = (node: ts.Node, message: string) => {
     violations.push({ file, line: lineOf(source, node), message })
@@ -166,6 +277,23 @@ function inspectSource(path: string): Violation[] {
       report(node, "/api/v1 path is owned by http-client.ts")
     }
     const inspectImportedModule = (importedModule: string) => {
+      if (importedModule.startsWith("@contract/") && importedModule !== transportContractModule) {
+        report(node, `application code must import the contract facade, not ${importedModule}`)
+      }
+      if (
+        webModule &&
+        forbiddenWebImportPrefixes.some((prefix) => startsWithModule(importedModule, prefix))
+      ) {
+        report(node, `web code must not import backend module ${importedModule}`)
+      }
+      if (
+        backendModule &&
+        forbiddenBackendImportPrefixes.some((prefix) =>
+          startsWithModule(importedModule, prefix)
+        )
+      ) {
+        report(node, `backend code must not import web module ${importedModule}`)
+      }
       if (!networkAllowed && isForbiddenHttpPackage(importedModule)) {
         report(node, `HTTP package ${importedModule} is forbidden outside an adapter`)
       }
@@ -190,6 +318,26 @@ function inspectSource(path: string): Violation[] {
       }
       if ((isUiModule || isFeatureHook) && isTransportDtoModule(path, importedModule)) {
         report(node, "UI and feature hooks must use view models instead of transport DTOs")
+      }
+      if (
+        operationTypedClient &&
+        importedModule === transportContractModule &&
+        ts.isImportDeclaration(node) &&
+        node.importClause?.namedBindings &&
+        ts.isNamedImports(node.importClause.namedBindings)
+      ) {
+        for (const element of node.importClause.namedBindings.elements) {
+          const importedName = element.propertyName?.text ?? element.name.text
+          if (
+            importedName !== "ApiOperationRequest" &&
+            importedName !== "ApiOperationResponse"
+          ) {
+            report(
+              element,
+              `API clients must derive transport types from operationId, not ${importedName}`
+            )
+          }
+        }
       }
     }
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
@@ -236,6 +384,49 @@ describe("web API boundary", () => {
         "Backend HTTP access must go through src/lib/api/client domain clients.",
         message,
       ].join("\n")
+    ).toEqual([])
+  })
+
+  it("keeps backend modules outside the transitive web dependency graph", () => {
+    const absoluteFiles = sourceFiles(sourceRoot)
+    const projectFiles = absoluteFiles.map(projectPath)
+    const sourceSet = new Set(projectFiles)
+    const absoluteByProjectPath = new Map(
+      absoluteFiles.map((path) => [projectPath(path), path])
+    )
+    const graph = new Map(projectFiles.map((file) => {
+      const absolutePath = absoluteByProjectPath.get(file)
+      if (!absolutePath) return [file, [] as string[]] as const
+      const dependencies = importedModules(absolutePath)
+        .map((module) => resolvedSourceFile(absolutePath, module, sourceSet))
+        .filter((dependency): dependency is string => dependency !== undefined)
+      return [file, dependencies] as const
+    }))
+    const violations: string[] = []
+
+    for (const root of projectFiles.filter(isWebModule)) {
+      const queue: Array<{ file: string; chain: string[] }> = [
+        { file: root, chain: [root] },
+      ]
+      const visited = new Set<string>()
+      while (queue.length > 0) {
+        const current = queue.shift()
+        if (!current || visited.has(current.file)) continue
+        visited.add(current.file)
+        for (const dependency of graph.get(current.file) ?? []) {
+          const chain = [...current.chain, dependency]
+          if (isBackendModule(dependency)) {
+            violations.push(chain.join(" -> "))
+            continue
+          }
+          queue.push({ file: dependency, chain })
+        }
+      }
+    }
+
+    expect(
+      [...new Set(violations)].sort(),
+      `Web dependency graph reaches backend modules:\n${violations.join("\n")}`
     ).toEqual([])
   })
 })

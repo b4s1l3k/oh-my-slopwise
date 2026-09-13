@@ -17,6 +17,7 @@ import type {
   GroupTypeViewModel,
   UserSummaryViewModel,
 } from "@/lib/api/view-models/models"
+import type { SupportedCurrency } from "@/lib/currencies"
 
 export default function NewGroupPage() {
   const router = useRouter()
@@ -24,7 +25,7 @@ export default function NewGroupPage() {
 
   const [name, setName] = useState("")
   const [type, setType] = useState<GroupTypeViewModel>("OTHER")
-  const [currency, setCurrency] = useState("RUB")
+  const [currency, setCurrency] = useState<SupportedCurrency>("RUB")
   const [members, setMembers] = useState<UserSummaryViewModel[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const { data: foundUsers = [] } = useUserSearchQuery(searchQuery)

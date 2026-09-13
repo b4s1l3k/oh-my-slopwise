@@ -1,36 +1,41 @@
 import type {
-  BalanceOverviewDto,
-  GroupBalancesResponseDto,
-  ResetSettlementsResponseDto,
-  SettlementListResponseDto,
-  SettlementResponseDto,
-} from "@/lib/api/v1/response-dtos"
+  ApiOperationRequest,
+  ApiOperationResponse,
+} from "@contract/v1"
 import { apiRequest, type ApiCallOptions } from "@/lib/api/client/http-client"
-import type { CreateSettlementInput } from "@/lib/validations/settlement"
 
 function pathSegment(value: string): string {
   return encodeURIComponent(value)
 }
 
 export const settlementsApi = {
-  createSettlement: (command: CreateSettlementInput, options?: ApiCallOptions) =>
-    apiRequest<SettlementResponseDto>("/settlements", {
+  createSettlement: (
+    command: ApiOperationRequest<"createSettlementV1">,
+    options?: ApiCallOptions
+  ) =>
+    apiRequest<ApiOperationResponse<"createSettlementV1", 201>>("/settlements", {
       ...options,
       method: "POST",
       body: command,
     }),
   getOverviewBalances: (options?: ApiCallOptions) =>
-    apiRequest<BalanceOverviewDto>("/balances/overview", options),
+    apiRequest<ApiOperationResponse<"getBalanceOverviewV1", 200>>(
+      "/balances/overview",
+      options
+    ),
   getGroupBalances: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<GroupBalancesResponseDto>(`/groups/${pathSegment(groupId)}/balances`, options),
+    apiRequest<ApiOperationResponse<"getGroupBalancesV1", 200>>(
+      `/groups/${pathSegment(groupId)}/balances`,
+      options
+    ),
   getGroupSettlements: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<SettlementListResponseDto>(
+    apiRequest<ApiOperationResponse<"listGroupSettlementsV1", 200>>(
       `/groups/${pathSegment(groupId)}/settlements`,
       options
     ),
   resetGroupSettlements: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<ResetSettlementsResponseDto>(`/groups/${pathSegment(groupId)}/settlements`, {
-      ...options,
-      method: "DELETE",
-    }),
+    apiRequest<ApiOperationResponse<"resetGroupSettlementsV1", 200>>(
+      `/groups/${pathSegment(groupId)}/settlements`,
+      { ...options, method: "DELETE" }
+    ),
 }

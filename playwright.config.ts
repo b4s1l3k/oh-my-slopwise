@@ -4,6 +4,7 @@ const e2eDatabaseUrl =
   process.env.E2E_DATABASE_URL ??
   "postgresql://splitwise:splitwise@localhost:5433/splitwise_e2e"
 const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3100"
+const usesExternalServer = process.env.E2E_EXTERNAL_SERVER === "true"
 const webServerCommand =
   process.env.E2E_SERVER_MODE === "production"
     ? "node --import tsx scripts/prepare-standalone-e2e.ts && NODE_ENV=production HOSTNAME=127.0.0.1 PORT=3100 node .next/standalone/server.js"
@@ -36,7 +37,7 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
+  webServer: usesExternalServer ? undefined : {
     command: webServerCommand,
     url: baseURL,
     reuseExistingServer: false,

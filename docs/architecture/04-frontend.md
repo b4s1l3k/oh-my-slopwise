@@ -121,11 +121,14 @@ cache invalidation. `query-keys.ts` является единственным к
 экспортируются отдельно от thin `useQuery`/`useMutation` wrappers и тестируются без UI.
 
 Архитектурный тест сканирует весь `src`, запрещает обход HTTP client, прямой импорт
-domain API clients вне `src/hooks/api` и прямой TanStack Query в feature pages/components.
+domain API clients вне `src/hooks/api`, прямой TanStack Query в feature pages/components
+и зависимости frontend от services, Prisma, backend routes/validation/persistence.
 Два намеренных infrastructure-исключения — корневой `Providers` и
-`AchievementWatcher`, которому нужен доступ к global MutationCache. Явные transport DTO
-хранятся централизованно в `src/lib/api/v1/response-dtos.ts`; generated DTO пока нет.
-API clients используют эти DTO только как тип wire-контракта. На границе feature hooks
+`AchievementWatcher`, которому нужен доступ к global MutationCache. Request и response
+transport DTO генерируются из canonical OpenAPI в `contracts/generated/typescript`;
+приложение импортирует именованные aliases только через `@contract/v1`. Проверка
+`npm run contract:check` не позволяет спецификации и generated types разойтись.
+На границе feature hooks
 каждый transport-ответ явно преобразуется mapper-ами из `src/lib/api/view-models/mappers.ts`
 в самостоятельные модели из `src/lib/api/view-models/models.ts`. Query cache поэтому
 хранит уже `GroupViewModel`, `ExpenseViewModel`, `ProfileViewModel` и другие UI-модели,
@@ -133,7 +136,9 @@ API clients используют эти DTO только как тип wire-ко
 стабильное `expenseCount`. Feature pages и components не импортируют transport DTO;
 это ограничение, как и запрет локальных копий моделей, проверяет архитектурный тест.
 
-JSON responses на клиенте не проходят runtime schema validation: явные backend mapper-ы стабилизируют wire shape, но TypeScript casts/generics не обнаружат нарушение контракта во время выполнения.
+JSON responses на клиенте не проходят runtime schema validation: compile-time shape
+защищает generated contract, а фактическое нарушение новым backend обнаруживают HTTP
+contract и полный candidate E2E gate.
 
 `SessionProvider` не получает session, уже прочитанную server layout-ом. Поэтому browser отдельно загружает client session; имя пользователя и admin navigation могут появиться после первоначального shell render.
 

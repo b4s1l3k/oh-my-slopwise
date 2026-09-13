@@ -1,32 +1,8 @@
 import type {
-  AcceptInviteResponseDto,
-  ActivityListResponseDto,
-  GroupListResponseDto,
-  GroupMemberResponseDto,
-  GroupResponseDto,
-  InviteInfoResponseDto,
-  InviteTokenResponseDto,
-  RequisitesResponseDto,
-} from "@/lib/api/v1/response-dtos"
+  ApiOperationRequest,
+  ApiOperationResponse,
+} from "@contract/v1"
 import { apiRequest, type ApiCallOptions } from "@/lib/api/client/http-client"
-type CreateGroupCommand = {
-  name: string
-  description?: string
-  type: "HOME" | "TRIP" | "COUPLE" | "OTHER"
-  currency: string
-  memberIds: string[]
-}
-
-type UpdateGroupCommand = {
-  name?: string
-  description?: string
-}
-
-type RequisitesCommand = {
-  payeeName?: string | null
-  bankName?: string | null
-  payeeAccount?: string | null
-}
 
 function pathSegment(value: string): string {
   return encodeURIComponent(value)
@@ -34,62 +10,86 @@ function pathSegment(value: string): string {
 
 export const groupsApi = {
   getGroups: (options?: ApiCallOptions) =>
-    apiRequest<GroupListResponseDto>("/groups", options),
+    apiRequest<ApiOperationResponse<"listGroupsV1", 200>>("/groups", options),
   getGroup: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<GroupResponseDto>(`/groups/${pathSegment(groupId)}`, options),
-  createGroup: (command: CreateGroupCommand, options?: ApiCallOptions) =>
-    apiRequest<GroupResponseDto>("/groups", { ...options, method: "POST", body: command }),
+    apiRequest<ApiOperationResponse<"getGroupV1", 200>>(
+      `/groups/${pathSegment(groupId)}`,
+      options
+    ),
+  createGroup: (
+    command: ApiOperationRequest<"createGroupV1">,
+    options?: ApiCallOptions
+  ) =>
+    apiRequest<ApiOperationResponse<"createGroupV1", 201>>("/groups", {
+      ...options,
+      method: "POST",
+      body: command,
+    }),
   updateGroup: (
     groupId: string,
-    command: UpdateGroupCommand,
+    command: ApiOperationRequest<"updateGroupV1">,
     options?: ApiCallOptions
-  ) => apiRequest<GroupResponseDto>(`/groups/${pathSegment(groupId)}`, {
-    ...options,
-    method: "PATCH",
-    body: command,
-  }),
-  deleteGroup: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<Record<string, never>>(`/groups/${pathSegment(groupId)}`, {
+  ) => apiRequest<ApiOperationResponse<"updateGroupV1", 200>>(
+    `/groups/${pathSegment(groupId)}`,
+    {
       ...options,
-      method: "DELETE",
-    }),
+      method: "PATCH",
+      body: command,
+    }
+  ),
+  deleteGroup: (groupId: string, options?: ApiCallOptions) =>
+    apiRequest<ApiOperationResponse<"deleteGroupV1", 200>>(
+      `/groups/${pathSegment(groupId)}`,
+      {
+        ...options,
+        method: "DELETE",
+      }
+    ),
   getActivity: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<ActivityListResponseDto>(`/groups/${pathSegment(groupId)}/activity`, options),
+    apiRequest<ApiOperationResponse<"listGroupActivityV1", 200>>(
+      `/groups/${pathSegment(groupId)}/activity`,
+      options
+    ),
   updateRequisites: (
     groupId: string,
-    command: RequisitesCommand,
+    command: ApiOperationRequest<"updateGroupRequisitesV1">,
     options?: ApiCallOptions
-  ) => apiRequest<RequisitesResponseDto>(`/groups/${pathSegment(groupId)}/requisites`, {
-    ...options,
-    method: "PATCH",
-    body: command,
-  }),
+  ) => apiRequest<ApiOperationResponse<"updateGroupRequisitesV1", 200>>(
+    `/groups/${pathSegment(groupId)}/requisites`,
+    { ...options, method: "PATCH", body: command }
+  ),
   createInvite: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<InviteTokenResponseDto>(`/groups/${pathSegment(groupId)}/invite`, {
-      ...options,
-      method: "POST",
-    }),
+    apiRequest<ApiOperationResponse<"getOrCreateGroupInviteV1", 200>>(
+      `/groups/${pathSegment(groupId)}/invite`,
+      { ...options, method: "POST" }
+    ),
   revokeInvite: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<Record<string, never>>(`/groups/${pathSegment(groupId)}/invite`, {
-      ...options,
-      method: "DELETE",
-    }),
+    apiRequest<ApiOperationResponse<"revokeGroupInviteV1", 200>>(
+      `/groups/${pathSegment(groupId)}/invite`,
+      { ...options, method: "DELETE" }
+    ),
   getInvite: (token: string, options?: ApiCallOptions) =>
-    apiRequest<InviteInfoResponseDto>(`/invites/${pathSegment(token)}`, options),
+    apiRequest<ApiOperationResponse<"getInviteV1", 200>>(
+      `/invites/${pathSegment(token)}`,
+      options
+    ),
   acceptInvite: (token: string, options?: ApiCallOptions) =>
-    apiRequest<AcceptInviteResponseDto>(`/invites/${pathSegment(token)}/accept`, {
-      ...options,
-      method: "POST",
-    }),
-  addMember: (groupId: string, userId: string, options?: ApiCallOptions) =>
-    apiRequest<GroupMemberResponseDto>(`/groups/${pathSegment(groupId)}/members`, {
-      ...options,
-      method: "POST",
-      body: { userId },
-    }),
+    apiRequest<ApiOperationResponse<"acceptInviteV1", 200>>(
+      `/invites/${pathSegment(token)}/accept`,
+      { ...options, method: "POST" }
+    ),
+  addMember: (
+    groupId: string,
+    userId: ApiOperationRequest<"addGroupMemberV1">["userId"],
+    options?: ApiCallOptions
+  ) =>
+    apiRequest<ApiOperationResponse<"addGroupMemberV1", 201>>(
+      `/groups/${pathSegment(groupId)}/members`,
+      { ...options, method: "POST", body: { userId } }
+    ),
   removeMember: (groupId: string, userId: string, options?: ApiCallOptions) => {
     const search = new URLSearchParams({ userId })
-    return apiRequest<Record<string, never>>(
+    return apiRequest<ApiOperationResponse<"removeGroupMemberV1", 200>>(
       `/groups/${pathSegment(groupId)}/members?${search}`,
       { ...options, method: "DELETE" }
     )

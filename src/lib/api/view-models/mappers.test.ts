@@ -4,7 +4,7 @@ import type {
   ExpenseDto,
   FeedbackDto,
   GroupDto,
-} from "@/lib/api/v1/response-dtos"
+} from "@contract/v1"
 import {
   mapActivityItemViewModel,
   mapAdminFeedbackViewModel,

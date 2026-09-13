@@ -1,7 +1,10 @@
 "use client"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { feedbackSchema, type FeedbackInput } from "@/lib/validations/feedback"
+import {
+  feedbackFormSchema,
+  type FeedbackFormValues,
+} from "@/lib/forms/feedback-form"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -18,7 +21,7 @@ export default function FeedbackPage() {
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<FeedbackInput>({ resolver: zodResolver(feedbackSchema) })
+  } = useForm<FeedbackFormValues>({ resolver: zodResolver(feedbackFormSchema) })
 
   const send = useCreateFeedbackMutation()
 

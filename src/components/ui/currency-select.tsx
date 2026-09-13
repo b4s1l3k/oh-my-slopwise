@@ -6,8 +6,8 @@ import { SUPPORTED_CURRENCIES, CURRENCY_META, type SupportedCurrency } from "@/l
 import { cn } from "@/lib/utils"
 
 type Props = {
-  value: string
-  onChange: (value: string) => void
+  value: SupportedCurrency
+  onChange: (value: SupportedCurrency) => void
   recentCurrencies?: string[]
   className?: string
   triggerClassName?: string
@@ -108,7 +108,7 @@ export function CurrencySelect({ value, onChange, recentCurrencies = [], classNa
   )
 }
 
-function CurrencyItem({ code, selected, onSelect }: { code: SupportedCurrency; selected: boolean; onSelect: (c: string) => void }) {
+function CurrencyItem({ code, selected, onSelect }: { code: SupportedCurrency; selected: boolean; onSelect: (c: SupportedCurrency) => void }) {
   const meta = CURRENCY_META[code]
   return (
     <button

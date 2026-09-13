@@ -39,7 +39,7 @@ import type {
   UserNameDto,
   UserSearchResponseDto,
   UserSummaryDto,
-} from "@/lib/api/v1/response-dtos"
+} from "@contract/v1"
 import { isSupportedCurrency } from "@/lib/currencies"
 import { isValidCalendarDate } from "@/lib/utils/calendar-date"
 

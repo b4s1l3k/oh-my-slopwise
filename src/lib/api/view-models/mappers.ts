@@ -24,7 +24,7 @@ import type {
   UserBalanceDto,
   UserNameDto,
   UserSummaryDto,
-} from "@/lib/api/v1/response-dtos"
+} from "@contract/v1"
 import type {
   AchievementCollectionViewModel,
   AchievementUnlockViewModel,

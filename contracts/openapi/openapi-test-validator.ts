@@ -21,7 +21,7 @@ export type SchemaValidationResult = {
   errors: ErrorObject[]
 }
 
-const contractPath = join(import.meta.dirname, "v1.openapi.json")
+const contractPath = join(process.cwd(), "contracts/openapi/v1.openapi.json")
 const document = JSON.parse(readFileSync(contractPath, "utf8")) as OpenApiDocument
 const ajv = new Ajv2020({
   allErrors: true,
@@ -183,6 +183,36 @@ export function validateOpenApiResponse(
   const validation = result(validator, body)
   if (validation.valid) validatedResponseKeys.add(cacheKey)
   return validation
+}
+
+export function openApiOperationIdForRequest(method: string, requestUrl: string): string {
+  const normalizedMethod = method.trim().toLowerCase()
+  const pathname = new URL(requestUrl, "http://openapi.test").pathname.replace(/\/$/, "") || "/"
+  const candidates = Object.entries(document.paths ?? {})
+    .map(([template, pathItem]) => ({
+      operation: pathItem[normalizedMethod] as OpenApiOperation | undefined,
+      pattern: pathTemplatePattern(template),
+      staticLength: template.replace(/\{[^}]+\}/g, "").length,
+    }))
+    .filter((candidate) => candidate.operation?.operationId)
+    .sort((left, right) => right.staticLength - left.staticLength)
+  const match = candidates.find((candidate) => candidate.pattern.test(pathname))
+  if (!match?.operation?.operationId) {
+    throw new Error(`No OpenAPI operation for ${method.toUpperCase()} ${pathname}`)
+  }
+  return match.operation.operationId
+}
+
+function pathTemplatePattern(template: string): RegExp {
+  const pattern = template
+    .split("/")
+    .map((segment) => /^\{[^}]+\}$/.test(segment) ? "[^/]+" : escapeRegExp(segment))
+    .join("/")
+  return new RegExp(`^${pattern}/?$`)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 export function validatedOpenApiResponseKeys(): string[] {

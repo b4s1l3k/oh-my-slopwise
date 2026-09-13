@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopwise.local/contracts/e2e/fixture-protocol.schema.json",
+  "title": "SLOPwise E2E fixture adapter protocol",
+  "$defs": {
+    "requisites": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payeeName", "bankName", "payeeAccount"],
+      "properties": {
+        "payeeName": { "type": "string", "minLength": 1 },
+        "bankName": { "type": "string", "minLength": 1 },
+        "payeeAccount": { "type": "string", "minLength": 1 }
+      }
+    },
+    "user": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixtureId", "email", "name", "password"],
+      "properties": {
+        "fixtureId": {
+          "enum": ["admin", "alice", "bob", "carol", "outsider"]
+        },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string", "minLength": 1 },
+        "password": { "type": "string", "minLength": 1 },
+        "applicationRole": { "const": "ADMIN" },
+        "requisites": { "$ref": "#/$defs/requisites" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "operation", "fixtureSet", "users"],
+      "properties": {
+        "protocolVersion": { "const": 1 },
+        "operation": { "const": "reset-and-seed" },
+        "fixtureSet": { "const": "default" },
+        "users": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/user" }
+        }
+      }
+    },
+    "response": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["protocolVersion", "ok"],
+          "properties": {
+            "protocolVersion": { "const": 1 },
+            "ok": { "const": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["protocolVersion", "ok", "error"],
+          "properties": {
+            "protocolVersion": { "const": 1 },
+            "ok": { "const": false },
+            "error": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["code"],
+              "properties": {
+                "code": { "type": "string", "minLength": 1 },
+                "message": { "type": "string" }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response" }
+  ]
+}

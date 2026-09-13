@@ -18,13 +18,13 @@ type ClientCase = {
 const groupCommand = {
   name: "Trip",
   type: "TRIP" as const,
-  currency: "RUB",
+  currency: "RUB" as const,
   memberIds: ["user-1"],
 }
 const expenseCommand = {
   title: "Dinner",
   amount: 1_000,
-  currency: "RUB",
+  currency: "RUB" as const,
   date: "2026-09-13",
   paidById: "user-1",
   splitType: "EQUAL" as const,

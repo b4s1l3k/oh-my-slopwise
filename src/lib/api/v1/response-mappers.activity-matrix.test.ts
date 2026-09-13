@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { ActivityDto } from "./response-dtos"
+import type { ActivityDto } from "@contract/v1"
 import { toActivityListResponse } from "./response-mappers"
 
 const timestamp = "2026-09-13T10:00:00.000Z"

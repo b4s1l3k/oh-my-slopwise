@@ -1,9 +1,7 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
-import { prisma } from "./db"
-import bcrypt from "bcryptjs"
 import authConfig from "./auth.config"
-import { isPasswordWithinBcryptLimit } from "@/lib/validations/auth"
+import { authenticateCredentialsThroughApi } from "@/lib/auth/credentials-client"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -14,34 +12,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email = typeof credentials?.email === "string"
-          ? credentials.email.trim().toLowerCase()
-          : credentials?.email
+        const email = credentials?.email
         const password = credentials?.password
         if (
           typeof email !== "string" ||
           typeof password !== "string" ||
           !email ||
-          !password ||
-          !isPasswordWithinBcryptLimit(password)
+          !password
         ) {
           return null
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email },
-        })
+        const user = await authenticateCredentialsThroughApi({ email, password })
         if (!user) return null
 
-        const valid = await bcrypt.compare(
-          password,
-          user.passwordHash
-        )
-        if (!valid) return null
-
-        const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase()
-        const role = user.email.toLowerCase() === adminEmail ? "ADMIN" : "USER"
-        return { id: user.id, email: user.email, name: user.name, image: user.avatarUrl, role }
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.avatarUrl,
+          role: user.role,
+        }
       },
     }),
   ],

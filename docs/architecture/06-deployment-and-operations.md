@@ -8,6 +8,8 @@
 | `AUTH_SECRET` | Подпись/шифрование Auth.js token state | Обязательна для корректного production auth, но startup явно не проверяет |
 | `AUTH_URL` | Публичный URL Auth.js | Зависит от окружения; указан в `.env.example` |
 | `ADMIN_EMAIL` | Email application admin | Необязательна; без совпадения admin UI/API недоступны |
+| `NEXT_PUBLIC_API_BASE_URL` | Build-time base URL browser API client | Необязательна; по умолчанию `/api/v1`, для cookie auth рекомендуется same-origin |
+| `BACKEND_API_BASE_URL` | Absolute base URL server-side credentials client, включая `/api/v1` | Необязательна при заданном `AUTH_URL`; иначе обязательна для login boundary |
 | `NODE_ENV` | Режим Next.js/Prisma | В image установлен `production` |
 | `HOSTNAME`, `PORT` | Bind standalone server | В image: `0.0.0.0:3000` |
 
@@ -132,14 +134,20 @@ flowchart TD
 Pipeline:
 
 1. checkout;
-2. Buildx setup;
-3. login в GHCR для non-PR;
-4. генерация branch/tag/SHA/latest image tags;
-5. build linux/amd64 image с GHA cache и provenance;
-6. push для non-PR;
-7. HTTP redeploy webhook.
+2. Node.js 22, `npm ci` и Prisma generate;
+3. typecheck, OpenAPI contract и language-neutral golden suites;
+4. полный unit/DB suite с coverage thresholds на изолированной test database;
+5. оптимизированный Next.js build;
+6. 225 Playwright HTTP/browser E2E против локального standalone artifact на
+   сбрасываемой `splitwise_e2e`;
+7. Buildx setup, login в GHCR для non-PR и генерация image tags;
+8. build linux/amd64 image с GHA cache/provenance и push для non-PR;
+9. HTTP redeploy webhook для non-PR.
 
-Docker build косвенно проверяет Prisma generate и Next production build. Отдельных шагов `npm test`, `npm run test:db`, `tsc --noEmit`, lint, migration smoke test и dependency/security scan перед публикацией нет.
+Pipeline блокирует публикацию при падении typecheck, contract, golden, coverage,
+build или E2E. Пока отсутствуют отдельные lint, dependency/security scan,
+проверка запуска собранного Docker image и smoke/recovery test именно custom
+migration entrypoint.
 
 ## Внешняя интеграция с ЦБ РФ
 

@@ -46,7 +46,7 @@ flowchart LR
 
 ## Endpoint inventory
 
-Всего реализовано 22 пути `/api/v1` и 32 v1 HTTP-операции, а также Auth.js catch-all route.
+Всего реализовано 23 пути `/api/v1` и 33 v1 HTTP-операции, а также Auth.js catch-all route.
 
 Машиночитаемый canonical contract находится в
 `contracts/openapi/v1.openapi.json`. Он описывает текущие DTO, cookie auth, page
@@ -65,6 +65,12 @@ field-by-field response mapper-ы не позволяют новым Prisma-по
 | Метод и путь | Доступ | Назначение |
 |---|---|---|
 | `GET/POST /api/auth/[...nextauth]` | Auth.js protocol | Credentials sign-in, session, sign-out и внутренние auth actions |
+
+### Authentication boundary
+
+| Метод и путь | Доступ | Назначение |
+|---|---|---|
+| `POST /api/v1/auth/credentials` | Public | Проверить credentials и вернуть стабильные identity claims для Auth.js без persistence-модели |
 
 ### Users
 
@@ -210,11 +216,16 @@ sequenceDiagram
 
 Любой active member может создать запись, указав любого active member плательщиком. `createdById` фиксирует автора и позже не изменяется.
 
-Возвращаемый create result загружается до создания cash settlements, поэтому поле `settlements` в первом ответе остаётся пустым до повторного чтения.
+После создания cash settlements сервис перечитывает полный агрегат. Поэтому
+первый успешный create response уже содержит созданные наличные расчёты.
 
 ### Update
 
-Редактировать может creator, payer или admin. Splits полностью удаляются и создаются заново. Новые cash payments через update запрещены; уже существующие сохраняют фактические `amount/currency/amountBase`, но получают актуальные payer, date и notes. Update отклоняется, если ранее принятая наличная сумма в валюте расчёта стала больше новой доли участника.
+Редактировать может creator, payer или admin. Splits полностью удаляются и
+создаются заново. Новые cash payments через update запрещены; уже существующие
+сохраняют фактические `amount/currency/amountBase`, но получают актуальные
+`toUserId`, date и notes. Update отклоняется, если ранее принятая наличная сумма
+в валюте расчёта стала больше новой доли участника.
 
 После финансовой части update проверяется, что ни у одного inactive member не появился raw balance; нарушение откатывает всю Serializable transaction.
 
@@ -254,7 +265,10 @@ Membership использует soft state `isActive`.
 
 Любой active member может получить active invite; отзывать может только admin. Токен — UUID без дефисов, TTL и лимита использований нет. Sequential acceptance идемпотентен для уже active member и реактивирует inactive member как `MEMBER`. Выход создателя invite не отзывает токен автоматически.
 
-DB constraint «не более одного active invite на группу» отсутствует, поэтому concurrent get-or-create способен создать несколько действующих токенов.
+DB constraint «не более одного active invite на группу» отсутствует. Инвариант
+сейчас обеспечивается Serializable create/revoke/accept transactions с bounded
+retry: concurrent get-or-create возвращает один active invite, а гонка accept с
+revoke завершается согласованным отозванным состоянием.
 
 ## Activity и lifetime statistics
 
@@ -273,18 +287,18 @@ Achievement GET только вычисляет progress. POST unseen сохра
 | Expense create/update/delete | Serializable |
 | Manual settlement create | Serializable |
 | Group delete | Serializable |
-| Member remove | Serializable |
+| Member add/remove | Serializable |
 | Group create/update | Default PostgreSQL isolation |
-| Member add | Default |
-| Invite create/revoke/accept | Default |
+| Invite create/revoke/accept | Serializable |
 | Settlement reset | Serializable |
 
-Все перечисленные Serializable operations используют общий bounded retry для Prisma `P2034`. Внутритранзакционные rechecks защищают membership, edit permissions, debt amount, admin role и zero-balance deletion. Основные незакрытые concurrency cases:
+Все перечисленные Serializable operations используют общий bounded retry для
+Prisma `P2034`. Внутритранзакционные rechecks защищают membership, edit
+permissions, debt amount, admin role, zero-balance deletion, invite state и
+settlement reset. Реальные E2E/DB race-сценарии фиксируют согласованное конечное
+состояние для invite create/revoke/accept, member add/remove, expense против
+member removal и settlement create/reset. Основные незакрытые concurrency cases:
 
-- reset может конкурировать с созданием settlement;
-- invite get-or-create может создать несколько active tokens;
-- accept, начавшийся до concurrent revoke, может завершить вступление после успешного revoke, так как row не блокируется и revoked не перечитывается;
-- concurrent add/reactivate/accept может записать повторные `MEMBER_ADDED` activity, хотя membership/facts защищены unique/upsert;
 - POST operations не используют idempotency key, поэтому network retry способен продублировать group, expense, settlement или feedback;
 - FX lookup выполняется до финансовой transaction.
 

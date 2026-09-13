@@ -41,7 +41,11 @@ flowchart LR
 flowchart TB
     subgraph browser[Browser]
         pages[React client pages]
+        hooks[Feature hooks]
         query[TanStack Query cache]
+        clients[Domain API clients]
+        http[Shared HTTP client]
+        contract[Generated OpenAPI\ntransport types]
         session[SessionProvider]
     end
 
@@ -57,8 +61,12 @@ flowchart TB
     postgres[(PostgreSQL)]
     cbr[CBR XML API]
 
-    pages <--> query
-    pages --> routes
+    pages --> hooks
+    hooks <--> query
+    hooks --> clients
+    clients --> http
+    clients -.-> contract
+    http --> routes
     session --> routes
     middleware --> layouts
     layouts --> auth
@@ -72,7 +80,14 @@ flowchart TB
 
 ### Browser boundary
 
-Большинство прикладных страниц являются client components и получают данные через `fetch('/api/v1/...')`. TanStack Query хранит server state, по умолчанию повторяет неуспешный query один раз и считает данные свежими 60 секунд; invite query отключает retry. Браузерные проверки улучшают UX, но не считаются защитой или доменной валидацией.
+Большинство прикладных страниц являются client components, но не обращаются к
+`/api/v1` напрямую. Путь данных проходит через feature hooks в `src/hooks/api`,
+domain API clients и единственный shared HTTP client; transport DTO берутся из
+сгенерированных OpenAPI types и преобразуются в независимые frontend ViewModel.
+TanStack Query хранит server state, по умолчанию повторяет неуспешный query один
+раз и считает данные свежими 60 секунд; invite query отключает retry.
+Браузерные проверки улучшают UX, но не считаются защитой или доменной
+валидацией.
 
 ### Next.js server boundary
 

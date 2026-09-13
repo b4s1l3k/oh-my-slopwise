@@ -84,7 +84,11 @@ React page/component
 
 ## Статус проверки
 
-- На 13 сентября 2026 года working tree основан на baseline `d0fa6d9`; `npx tsc --noEmit` проходит без ошибок.
+- На 13 сентября 2026 года working tree основан на baseline `a93c9fc`; `npx tsc --noEmit` проходит без ошибок.
 - Обычный `npm test`: 858 тестов проходят, 132 DB-зависимых сценария пропускаются по feature flag.
-- Production `npm run build` проходит.
+- Оптимизированный Next.js build через `npm run build` проходит; это режим
+  сборки, а не проверка production-окружения.
 - Полный `npm run test:coverage` на защищённом `TEST_DATABASE_URL`: 990 тестов проходят; guard запрещает application DB и имя без маркера `test`.
+- Оба локальных E2E-режима проходят `225/225`: через `next dev` и через
+  `.next/standalone/server.js`. Оба используют только сбрасываемую Docker-БД
+  `splitwise_e2e`; внешний трафик и production-БД не задействованы.

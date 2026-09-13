@@ -9,7 +9,7 @@
 | Область | Текущее состояние | Риск |
 |---|---|---|
 | Production migrations | Custom psql runner без distributed lock/checksum verification | Параллельный rollout или crash window может вызвать duplicate DDL failure, рассинхронизацию history/schema или блокировку startup |
-| CI gates | Docker build без test/typecheck steps | Regression может быть опубликована и сразу отправлена в redeploy |
+| CI residual gaps | Typecheck, contract, golden, coverage, build и standalone E2E уже блокируют publish; нет lint, dependency/security scan, Docker image startup и custom migrator smoke/recovery test | Регрессия упаковки image, supply-chain проблема или сбой migration entrypoint могут проявиться только после публикации |
 | Application admin | Роль выводится только из `ADMIN_EMAIL` при login | Регистрация незанятого admin email или старый JWT создают неочевидный access lifecycle |
 | Observability | Client генерирует `X-Request-ID`, но backend не прокидывает его в structured logs; metrics, traces и app health отсутствуют | Production failure трудно обнаружить и расследовать |
 | Legacy `amountBase` | Nullable, migration не выполняла backfill | Старые foreign-currency строки могут интерпретировать original amount как group currency |

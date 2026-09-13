@@ -75,7 +75,7 @@ flowchart LR
 
 | Workload | Ответственность | Состояние |
 |---|---|---|
-| Web/BFF | UI, SSR, browser session, CSRF, web-specific aggregation | Stateless |
+| Web/BFF | UI, SSR, browser session, CSRF, web-specific aggregation | Process-local stateless; shared session state во внешнем store |
 | Backend API | Commands, authoritative queries, authorization, транзакции | Stateless |
 | Worker | Outbox consumers, projections, notifications, scheduled jobs | Lease/checkpoint в PostgreSQL |
 | Migrator | Единственное применение schema migrations | One-shot release job |
@@ -98,6 +98,20 @@ Next.js отвечает за рендеринг, навигацию и browser-
 Browser вызывает same-origin BFF, BFF добавляет backend bearer token и вызывает
 `/api/v2`; native/WebView networking layer вызывает `/api/v2` напрямую с OAuth
 bearer. Backend не принимает browser cookie как credential.
+
+Session store принадлежит Web/Auth boundary, а не доменному backend. На первом
+этапе он размещается в отдельной `web_auth` schema управляемого PostgreSQL с
+отдельной restricted DB role и собственными миграциями BFF; Web не получает
+доступа к доменным таблицам. Все BFF replicas используют один store, записи
+имеют абсолютный TTL и очищаются фоновым job. Refresh tokens шифруются ключом из
+secret manager; в БД хранится версия ключа для контролируемой ротации.
+
+При недоступности store BFF работает fail-closed: не принимает session cookie,
+не использует process-local fallback и не вызывает backend со stale token.
+Store использует multi-AZ/backup/restore политику PostgreSQL, ограниченные
+connection/statement timeouts и readiness, которая выводит нездоровую BFF
+replica из трафика. Такая схема сохраняет горизонтальную масштабируемость Web;
+выделенный Redis рассматривается только при подтверждённой нагрузке.
 
 Web использует сгенерированный TypeScript client из OpenAPI. Компоненты не описывают API DTO вручную.
 
@@ -545,7 +559,10 @@ Backups включают PostgreSQL PITR, configuration/IaC, signing keys, signe
 - E2E login, invite/deep link, group, expense, settlement, offline retry и push navigation;
 - accessibility и responsive layouts.
 
-Существующие 549 Vitest tests и 37 language-neutral golden scenarios являются characterization/reference suite. Новая реализация не обязана повторять признанные дефекты, но каждое отличие должно быть результатом ADR и отдельного target expectation в test vector.
+Существующие 990 Vitest tests полного DB-enabled run и 186 language-neutral
+golden vectors являются characterization/reference suite. Новая реализация не
+обязана повторять признанные дефекты, но каждое отличие должно быть результатом
+ADR и отдельного target expectation в test vector.
 
 ## План полного переписывания
 
@@ -564,8 +581,8 @@ Backups включают PostgreSQL PITR, configuration/IaC, signing keys, signe
 9. expected offline/mobile behavior.
 
 Результат: OpenAPI skeleton, отдельный versioned v2 vector manifest/schema,
-матрица всех 32 операций v1 → v2 и список старых особенностей, которые намеренно
-не переносятся. Текущие 37 golden-сценариев остаются v1 characterization и не
+матрица всех 33 операций v1 → v2 и список старых особенностей, которые намеренно
+не переносятся. Текущие 186 golden-векторов остаются v1 characterization и не
 являются target gate. До platform также принимаются ADR по OIDC/account
 deletion и retention idempotency records.
 

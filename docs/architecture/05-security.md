@@ -19,7 +19,7 @@ flowchart LR
 Authoritative boundaries:
 
 - server layouts защищают UI route groups;
-- каждый `/api/v1` route, кроме регистрации, проверяет session;
+- каждый `/api/v1` route, кроме регистрации и credentials authentication boundary, проверяет session;
 - group-scoped операции проверяют active membership и/или role;
 - критические мутации повторяют authorization/state checks внутри transaction;
 - Zod проверяет большинство JSON command DTO; path/query/Auth.js inputs валидируются отдельно или вручную только частично;
@@ -31,11 +31,13 @@ Middleware проверяет только наличие cookie и не вал�
 
 Auth.js v5 использует Credentials provider.
 
-1. User ищется по точному email.
-2. Пароль сравнивается с bcrypt hash.
-3. При login формируется JWT session.
-4. В token сохраняются user ID, name и application role.
-5. Session callback раскрывает их server/client коду.
+1. Email нормализуется через `trim().toLowerCase()` и проходит validation.
+2. Auth.js вызывает публичный `POST /api/v1/auth/credentials` через отдельный
+   server-side client; endpoint возвращает только стабильные identity claims.
+3. User ищется по нормализованному email, пароль сравнивается с bcrypt hash.
+4. При login формируется JWT session.
+5. В token сохраняются user ID, name и application role.
+6. Session callback раскрывает их server/client коду.
 
 Registration хэширует пароль `bcrypt.hash(password, 10)`. Общая boundary-проверка ограничивает пароль 72 UTF-8 байтами; тот же guard выполняется до bcrypt compare при login, поэтому пароль с одинаковым bcrypt-prefix и лишним suffix не принимается. Password hash не включается в public projections и API-ответы.
 
@@ -86,7 +88,10 @@ Profile и membership хранят имя получателя, банк и но
 
 Следовательно, реквизиты конкретного пользователя раскрываются ему самому и участникам, которые сейчас должны ему. Для остальных обнуляются group overrides и profile defaults. Это server-side фильтрация до JSON response.
 
-Client cache не инвалидирует group query после expense/settlement/reset. Поэтому уже полученная projection может временно не показать новые реквизиты либо продолжать хранить ранее раскрытые после изменения debt graph. Privacy policy гарантируется новым server GET, но не немедленной очисткой browser cache.
+После expense create/update/delete и settlement create/reset frontend
+инвалидирует group detail вместе с balances, overview и зависимыми query. Новая
+projection реквизитов запрашивается после изменения debt graph; authoritative
+privacy boundary по-прежнему находится в server-side mapper/service.
 
 Реквизиты и active invite token хранятся в PostgreSQL открытым текстом; field-level encryption и hash-at-rest для invite отсутствуют. Lifetime peer/money facts сохраняются после удаления source groups. При этом self-service API/UI удаления аккаунта нет, а большинство user foreign keys используют `RESTRICT`, поэтому практический data-erasure flow не реализован.
 
@@ -156,13 +161,19 @@ Rate limiting отсутствует для:
 
 Public registration различает новый и уже занятый email через 201/409, поэтому является unauthenticated account-enumeration oracle.
 
-Email не нормализуется через `trim/lowercase`. PostgreSQL unique index в текущей форме допускает разные регистры как разные строки, а login требует точного совпадения.
+Registration и login нормализуют email через `trim().toLowerCase()` до поиска и
+записи. PostgreSQL unique index остаётся case-sensitive сам по себе, поэтому
+инвариант регистра зависит от обязательного использования этой application
+boundary всеми будущими write paths.
 
 Array size limits не определены, поэтому authenticated client способен отправить крупные `memberIds`, `splits` или `cashPayments`. Application-level body limit не задан; фактическое ограничение зависит от Next.js runtime и reverse proxy.
 
 ## Navigation и callback URL
 
-Middleware сохраняет исходный pathname в `callbackUrl`. Login/register затем читают параметр и передают его в `router.push` без явной проверки, что значение является локальным URL. Middleware формирует безопасный pathname сам, но пользователь может открыть auth page с произвольным query parameter. Рекомендуется явно принимать только относительный путь текущего origin.
+Middleware сохраняет исходный pathname в `callbackUrl`. Login/register
+пропускают параметр через общий `getSafeAuthCallback`: принимается только
+относительный URL текущего origin, а absolute, protocol-relative, malformed и
+script URL заменяются на `/`.
 
 Ссылки между login и registration не переносят существующий callback URL, поэтому invite destination может потеряться при переключении формы.
 

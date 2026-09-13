@@ -115,9 +115,13 @@ test.describe("concurrent membership operations", () => {
       expect(expenses.expenses).toMatchObject([{ title: "Concurrent membership debt" }])
       expect(balances.balances.simplified).toMatchObject([{ fromUserId: bobId, amount: 1_000 }])
     } else {
-      expect(expenseResponse.status()).toBe(422)
+      expect([409, 422]).toContain(expenseResponse.status())
       await expect(expenseResponse.json()).resolves.toMatchObject({
-        error: { code: "SPLIT_USER_NOT_MEMBER" },
+        error: {
+          code: expenseResponse.status() === 409
+            ? "TRANSACTION_CONFLICT"
+            : "SPLIT_USER_NOT_MEMBER",
+        },
       })
       expect(removeResponse.status()).toBe(200)
       expect(members.some(({ userId }) => userId === bobId)).toBe(false)

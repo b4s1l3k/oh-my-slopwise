@@ -294,17 +294,15 @@ Radix primitives дают базовую keyboard/focus semantics для dialog/
 
 ## Ошибочные состояния UI
 
-Обработка ошибок неоднородна. Invite, achievements и statistics имеют явные error states, но часть экранов интерпретирует failed query как отсутствие данных:
+HTTP client преобразует неоднородные legacy envelopes в единый `ApiError`, а
+query-экраны используют общий `QueryErrorState` с retry. Отдельные E2E-сценарии
+фиксируют recovery для dashboard, groups, group detail/settings, profile,
+statistics/achievements, feedback и пагинации.
 
-- расходы могут выглядеть как пустой список;
-- failed balance — как полностью закрытые долги;
-- failed group query — как отсутствующая группа;
-- failed dashboard overview — как «Все расчёты завершены», а groups error — как пустой блок;
-- `/groups` error — как пустой список;
-- failed admin feedback GET — как отсутствие сообщений;
-- activity подавляет ошибки отдельных групп.
-- top-level failure загрузки списка групп также выглядит как пустая activity;
-- profile error оставляет пустую редактируемую форму;
-- централизованной реакции на 401 после истечения client session нет.
+Остаются два системных пробела:
 
-Единого декодера HTTP ошибок и общего retry UI нет.
+- activity агрегирует запросы нескольких групп и подавляет ошибку отдельной
+  группы, поэтому лента может быть неполной без явного предупреждения;
+- общей реакции на `401` после истечения client session нет: каждый query или
+  mutation получает обычный `ApiError`, но единый re-auth/logout flow не
+  запускается.

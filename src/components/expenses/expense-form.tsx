@@ -1,6 +1,5 @@
 "use client"
-import { useState, useEffect } from "react"
-import { useMutation } from "@tanstack/react-query"
+import { useEffect, useId, useState } from "react"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,29 +10,20 @@ import { parseMoneyInput, toCalendarDateInputValue } from "@/lib/utils/format"
 import { useToast } from "@/components/ui/toast"
 import { CURRENCY_META, isSupportedCurrency } from "@/lib/currencies"
 import { CurrencySelect } from "@/components/ui/currency-select"
+import { ApiError, getApiErrorMessage } from "@/lib/api/client/api-error"
+import { useCreateExpense, useUpdateExpense } from "@/hooks/api/use-expenses"
+import type {
+  ExpenseViewModel,
+  UserSummaryViewModel,
+} from "@/lib/api/view-models/models"
 
-type Member = { id: string; name: string; avatarUrl: string | null }
-type SplitType = "EQUAL" | "EXACT" | "PERCENTAGE"
-
-// Данные для режима редактирования
-export type EditableExpense = {
-  id: string
-  title: string
-  amount: number
-  currency: string
-  customRate?: number | null
-  splitType: SplitType
-  date: string
-  notes?: string | null
-  paidById: string
-  splits: { userId: string; amount: number; share?: number | null; percentage?: number | null }[]
-}
+type SplitType = ExpenseViewModel["splitType"]
 
 type Props = {
   groupId: string
-  members: Member[]
+  members: UserSummaryViewModel[]
   currency: string
-  expense?: EditableExpense // если передан — режим редактирования
+  expense?: ExpenseViewModel // если передан — режим редактирования
   // Последний ручной курс каждого плательщика по валютам: rateBook[userId][currency]
   rateBook?: Record<string, Record<string, number>>
   // Все валюты каждого плательщика в порядке последнего использования
@@ -42,6 +32,7 @@ type Props = {
 }
 
 export function ExpenseForm({ groupId, members, currency, expense, rateBook, recentByPayer, onSuccess }: Props) {
+  const fieldId = useId()
   const { data: session } = useSession()
   const { toast } = useToast()
   const isEdit = !!expense
@@ -93,8 +84,12 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
     setRateStr(rememberedRate != null ? String(rememberedRate) : "")
   }, [isEdit, paidById, expenseCurrency, rememberedRate])
 
-  const { mutate, isPending } = useMutation({
-    mutationFn: async () => {
+  const createExpense = useCreateExpense(groupId)
+  const updateExpense = useUpdateExpense(groupId, expense?.id ?? "")
+  const isPending = createExpense.isPending || updateExpense.isPending
+
+  const submit = async () => {
+    try {
       const amount = parseMoneyInput(amountStr)
       if (!amount) throw new Error("Укажите корректную сумму")
       if (!title.trim()) throw new Error("Укажите название")
@@ -117,48 +112,40 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
             })
         : []
 
-      const url = isEdit ? `/api/v1/expenses/${expense!.id}` : `/api/v1/groups/${groupId}/expenses`
-      const res = await fetch(url, {
-        method: isEdit ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          amount,
-          currency: expenseCurrency,
-          customRate,
-          paidById,
-          splitType,
-          date,
-          notes: notes.trim() || undefined,
-          splits,
-          ...(cashPaymentsList.length > 0 ? { cashPayments: cashPaymentsList } : {}),
-        }),
-      })
-      if (!res.ok) {
-        const data = (await res.json()) as {
-          error?: string | { code?: string; message?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]> }
-        }
-        if (typeof data.error === "object" && data.error?.code === "RATE_UNAVAILABLE") {
-          setRateRequired(true)
-          throw new Error("RATE_UNAVAILABLE")
-        }
-        const msg =
-          typeof data.error === "string"
-            ? data.error
-            : data.error?.message ??
-              data.error?.formErrors?.[0] ??
-              Object.values(data.error?.fieldErrors ?? {})[0]?.[0] ??
-              (isEdit ? "Ошибка сохранения" : "Ошибка создания расхода")
-        throw new Error(msg)
+      const command = {
+        title: title.trim(),
+        amount,
+        currency: expenseCurrency,
+        customRate,
+        paidById,
+        splitType,
+        date,
+        notes: notes.trim() || undefined,
+        splits,
+        ...(cashPaymentsList.length > 0 ? { cashPayments: cashPaymentsList } : {}),
       }
-      return res.json()
-    },
-    onSuccess: onSuccess,
-    onError: (e) => {
-      if (e instanceof Error && e.message === "RATE_UNAVAILABLE") return
-      toast({ title: e instanceof Error ? e.message : "Ошибка", variant: "destructive" })
-    },
-  })
+      if (isEdit) {
+        await updateExpense.mutateAsync(command)
+      } else {
+        await createExpense.mutateAsync(command)
+      }
+      onSuccess()
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "RATE_UNAVAILABLE") {
+        setRateRequired(true)
+        return
+      }
+      toast({
+        title: error instanceof ApiError
+          ? getApiErrorMessage(
+              error,
+              isEdit ? "Ошибка сохранения" : "Ошибка создания расхода"
+            )
+          : error instanceof Error ? error.message : "Ошибка",
+        variant: "destructive",
+      })
+    }
+  }
 
   const totalAmount = parseMoneyInput(amountStr)
   const expCur = isSupportedCurrency(expenseCurrency) ? expenseCurrency : "RUB"
@@ -173,15 +160,21 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label>Название *</Label>
-        <Input placeholder="Ужин в ресторане" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <Label htmlFor={`${fieldId}-title`}>Название *</Label>
+        <Input
+          id={`${fieldId}-title`}
+          placeholder="Ужин в ресторане"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <Label>Сумма траты *</Label>
+          <Label htmlFor={`${fieldId}-amount`}>Сумма траты *</Label>
           <div className="flex gap-2">
             <Input
+              id={`${fieldId}-amount`}
               type="number"
               placeholder="1200"
               value={amountStr}
@@ -200,15 +193,20 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
           </div>
         </div>
         <div className="space-y-2">
-          <Label>Дата</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <Label htmlFor={`${fieldId}-date`}>Дата</Label>
+          <Input
+            id={`${fieldId}-date`}
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
         </div>
       </div>
 
       {/* Ручной курс — только если валюта траты ≠ валюте расчёта */}
       {differentCurrency && (
         <div className={`space-y-2 rounded-lg border p-3 ${rateRequired ? "border-destructive bg-destructive/5" : "bg-muted/30"}`}>
-          <Label className="flex items-baseline gap-2">
+          <Label htmlFor={`${fieldId}-rate`} className="flex items-baseline gap-2">
             Курс
             {!rateRequired && <span className="text-xs font-normal text-muted-foreground">необязательно</span>}
             {rateRequired && <span className="text-xs font-normal text-destructive">обязательно</span>}
@@ -221,6 +219,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground whitespace-nowrap">1 {expSymbol} =</span>
             <Input
+              id={`${fieldId}-rate`}
               type="number"
               placeholder="по курсу ЦБ"
               value={rateStr}
@@ -246,9 +245,9 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
       )}
 
       <div className="space-y-2">
-        <Label>Кто заплатил</Label>
+        <Label htmlFor={`${fieldId}-payer`}>Кто заплатил</Label>
         <Select value={paidById} onValueChange={setPaidById}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger id={`${fieldId}-payer`}><SelectValue /></SelectTrigger>
           <SelectContent>
             {members.map((m) => (
               <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
@@ -284,6 +283,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
               <div key={m.id} className="flex items-center gap-3">
                 <button
                   type="button"
+                  aria-label={`${selected ? "Исключить" : "Добавить"} ${m.name}`}
                   onClick={() => {
                     setSelectedIds((prev) =>
                       prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id]
@@ -304,6 +304,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
                 )}
                 {selected && splitType === "EXACT" && (
                   <Input
+                    aria-label={`Доля ${m.name}`}
                     type="number"
                     className="w-28 h-8 text-sm"
                     placeholder="0.00"
@@ -315,6 +316,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
                 {selected && splitType === "PERCENTAGE" && (
                   <div className="flex items-center gap-1">
                     <Input
+                      aria-label={`Процент ${m.name}`}
                       type="number"
                       className="w-20 h-8 text-sm"
                       placeholder="0"
@@ -356,6 +358,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
                     <div key={id} className="flex items-center gap-2">
                       <span className="text-sm flex-1 truncate">{m.name}</span>
                       <Input
+                        aria-label={`Наличными ${m.name}`}
                         type="number"
                         className="w-28 h-8 text-sm"
                         placeholder="0.00"
@@ -377,11 +380,16 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
       )}
 
       <div className="space-y-2">
-        <Label>Заметка (необязательно)</Label>
-        <Input placeholder="..." value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <Label htmlFor={`${fieldId}-notes`}>Заметка (необязательно)</Label>
+        <Input
+          id={`${fieldId}-notes`}
+          placeholder="..."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
       </div>
 
-      <Button className="w-full" disabled={isPending} onClick={() => mutate()}>
+      <Button className="w-full" disabled={isPending} onClick={() => void submit()}>
         {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {isEdit ? "Сохранить изменения" : "Добавить расход"}
       </Button>

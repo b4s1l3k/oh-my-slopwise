@@ -1,0 +1,19 @@
+{
+  "$schema": "schema/golden-manifest.schema.json",
+  "schemaVersion": 1,
+  "suites": [
+    "fixtures/expense-splits-fx.json",
+    "fixtures/split-rounding-boundaries.json",
+    "fixtures/fx-rate-boundaries.json",
+    "fixtures/balances-settlements.json",
+    "fixtures/balance-determinism.json",
+    "fixtures/membership-dates.json",
+    "fixtures/calendar-date-boundaries.json",
+    "fixtures/lifecycle-membership-reset.json",
+    "fixtures/statistics-achievements.json",
+    "fixtures/effective-history-boundaries.json",
+    "fixtures/auth-errors.json",
+    "fixtures/service-error-security-matrix.json",
+    "fixtures/transport-validation-boundaries.json"
+  ]
+}

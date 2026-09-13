@@ -1,0 +1,1755 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SLOPwise legacy API",
+    "version": "1.0.0.2026-09-13",
+    "description": "Canonical contract of the current Next.js /api/v1 API. Monetary integer fields use the application's current minor-unit convention."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Same-origin Next.js server"
+    }
+  ],
+  "security": [
+    {
+      "sessionCookie": []
+    }
+  ],
+  "tags": [
+    { "name": "Groups" },
+    { "name": "Expenses" },
+    { "name": "Balances" },
+    { "name": "Settlements" },
+    { "name": "Invites" },
+    { "name": "Users" },
+    { "name": "Achievements" },
+    { "name": "Feedback" }
+  ],
+  "paths": {
+    "/api/v1/admin/feedback": {
+      "get": {
+        "operationId": "listAdminFeedbackV1",
+        "tags": ["Feedback"],
+        "summary": "List the latest feedback entries as an application admin",
+        "responses": {
+          "200": {
+            "description": "At most 100 feedback entries, newest first",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FeedbackListResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/balances/overview": {
+      "get": {
+        "operationId": "getBalanceOverviewV1",
+        "tags": ["Balances"],
+        "summary": "Get current user's balances aggregated by friend and group currency",
+        "responses": {
+          "200": {
+            "description": "Overview. The payload is not wrapped in a data property.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BalanceOverview" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/expenses/{id}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/IdPath" }
+      ],
+      "get": {
+        "operationId": "getExpenseV1",
+        "tags": ["Expenses"],
+        "summary": "Get one expense visible to the current active group member",
+        "responses": {
+          "200": {
+            "description": "Expense",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpenseResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "operationId": "updateExpenseV1",
+        "tags": ["Expenses"],
+        "summary": "Replace editable expense fields using the create-expense command shape",
+        "description": "cashPayments is accepted by validation but any non-empty value is rejected by the service. Existing linked cash settlements are retained.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpenseCommand" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated expense",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpenseResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteExpenseV1",
+        "tags": ["Expenses"],
+        "summary": "Delete an expense",
+        "responses": {
+          "200": { "$ref": "#/components/responses/EmptyObject" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/feedback": {
+      "post": {
+        "operationId": "createFeedbackV1",
+        "tags": ["Feedback"],
+        "summary": "Submit feedback",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateFeedbackRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created feedback",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FeedbackResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/groups": {
+      "get": {
+        "operationId": "listGroupsV1",
+        "tags": ["Groups"],
+        "summary": "List active groups of the current user",
+        "responses": {
+          "200": {
+            "description": "Groups ordered by descending updatedAt",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GroupListResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createGroupV1",
+        "tags": ["Groups"],
+        "summary": "Create a group and memberships",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateGroupRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created group",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GroupResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/groups/{id}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/IdPath" }
+      ],
+      "get": {
+        "operationId": "getGroupV1",
+        "tags": ["Groups"],
+        "summary": "Get a group and active members",
+        "description": "Payee details are nulled for members to whom the current user does not owe money.",
+        "responses": {
+          "200": {
+            "description": "Group",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GroupResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "operationId": "updateGroupV1",
+        "tags": ["Groups"],
+        "summary": "Update group name and/or description as group admin",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateGroupRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated group",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GroupResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteGroupV1",
+        "tags": ["Groups"],
+        "summary": "Delete a zero-balance group as group admin",
+        "responses": {
+          "200": { "$ref": "#/components/responses/EmptyObject" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/groups/{id}/activity": {
+      "parameters": [
+        { "$ref": "#/components/parameters/IdPath" }
+      ],
+      "get": {
+        "operationId": "listGroupActivityV1",
+        "tags": ["Groups"],
+        "summary": "List the latest 50 activity records of a group",
+        "responses": {
+          "200": {
+            "description": "Activity ordered newest first",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ActivityListResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v1/groups/{id}/balances": {
+      "parameters": [
+        { "$ref": "#/components/parameters/IdPath" }
+      ],
+      "get": {
+        "operationId": "getGroupBalancesV1",
+        "tags": ["Balances"],
+        "summary": "Calculate raw and simplified current group balances",
+        "responses": {
+          "200": {
+            "description": "Balances in the group's settlement currency",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GroupBalancesResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/groups/{id}/expenses": {
+      "parameters": [
+        { "$ref": "#/components/parameters/IdPath" }
+      ],
+      "get": {
+        "operationId": "listGroupExpensesV1",
+        "tags": ["Expenses"],
+        "summary": "List one page of group expenses",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "One-based page number. The server uses a fixed page size of 30.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "default": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Expense page",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpensePageResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      },
+      "post": {
+        "operationId": "createExpenseV1",
+        "tags": ["Expenses"],
+        "summary": "Create an expense and optional linked cash settlements",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpenseCommand" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created expense",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpenseResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/groups/{id}/invite": {
+      "parameters": [
+        { "$ref": "#/components/parameters/IdPath" }
+      ],
+      "post": {
+        "operationId": "getOrCreateGroupInviteV1",
+        "tags": ["Invites"],
+        "summary": "Get or create the group's active reusable invite token",
+        "responses": {
+          "200": {
+            "description": "Invite token",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InviteTokenResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      },
+      "delete": {
+        "operationId": "revokeGroupInviteV1",
+        "tags": ["Invites"],
+        "summary": "Revoke active invite links as group admin",
+        "responses": {
+          "200": { "$ref": "#/components/responses/EmptyObject" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/groups/{id}/members": {
+      "parameters": [
+        { "$ref": "#/components/parameters/IdPath" }
+      ],
+      "post": {
+        "operationId": "addGroupMemberV1",
+        "tags": ["Groups"],
+        "summary": "Add or reactivate a group member as group admin",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AddGroupMemberRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created or reactivated membership",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GroupMemberResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      },
+      "delete": {
+        "operationId": "removeGroupMemberV1",
+        "tags": ["Groups"],
+        "summary": "Deactivate a member or let the current non-admin member leave",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": { "$ref": "#/components/schemas/OpaqueId" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/EmptyObject" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/groups/{id}/requisites": {
+      "parameters": [
+        { "$ref": "#/components/parameters/IdPath" }
+      ],
+      "patch": {
+        "operationId": "updateGroupRequisitesV1",
+        "tags": ["Groups"],
+        "summary": "Update the current member's group-specific payee details",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RequisitesRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated group-specific payee details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RequisitesResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/api/v1/groups/{id}/settlements": {
+      "parameters": [
+        { "$ref": "#/components/parameters/IdPath" }
+      ],
+      "get": {
+        "operationId": "listGroupSettlementsV1",
+        "tags": ["Settlements"],
+        "summary": "List group settlements newest business date first",
+        "responses": {
+          "200": {
+            "description": "Settlements",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SettlementListResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      },
+      "delete": {
+        "operationId": "resetGroupSettlementsV1",
+        "tags": ["Settlements"],
+        "summary": "Delete all manual group settlements as group admin",
+        "description": "Cash settlements linked to an expense are retained.",
+        "responses": {
+          "200": {
+            "description": "Number of removed manual settlements",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ResetSettlementsResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/invites/{token}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/TokenPath" }
+      ],
+      "get": {
+        "operationId": "getInviteV1",
+        "tags": ["Invites"],
+        "summary": "Get invite preview for the signed-in user",
+        "responses": {
+          "200": {
+            "description": "Invite preview",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InviteInfoResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/invites/{token}/accept": {
+      "parameters": [
+        { "$ref": "#/components/parameters/TokenPath" }
+      ],
+      "post": {
+        "operationId": "acceptInviteV1",
+        "tags": ["Invites"],
+        "summary": "Accept or idempotently re-accept an invite",
+        "responses": {
+          "200": {
+            "description": "Joined group identifier",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AcceptInviteResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/settlements": {
+      "post": {
+        "operationId": "createSettlementV1",
+        "tags": ["Settlements"],
+        "summary": "Record a settlement from the current user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateSettlementRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created settlement",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SettlementResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "operationId": "getCurrentUserV1",
+        "tags": ["Users"],
+        "summary": "Get current user profile",
+        "responses": {
+          "200": {
+            "description": "The user value can be null if the authenticated account row disappeared.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProfileResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "patch": {
+        "operationId": "updateCurrentUserV1",
+        "tags": ["Users"],
+        "summary": "Update current user profile and default payee details",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateProfileRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated user profile",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProfileResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" }
+        }
+      }
+    },
+    "/api/v1/users/me/achievements": {
+      "get": {
+        "operationId": "getCurrentUserAchievementsV1",
+        "tags": ["Achievements"],
+        "summary": "Evaluate and return current achievement progress without mutating notification state",
+        "responses": {
+          "200": {
+            "description": "Achievement catalogue and progress",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AchievementCollection" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/users/me/achievements/unseen": {
+      "post": {
+        "operationId": "claimCurrentUserAchievementNotificationsV1",
+        "tags": ["Achievements"],
+        "summary": "Persist new unlocks and atomically claim unseen notifications",
+        "description": "This mutation intentionally degrades internal failures to HTTP 200 with an empty unlocked array.",
+        "responses": {
+          "200": {
+            "description": "Achievement unlocks claimed by this request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AchievementUnlocksResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/users/me/statistics": {
+      "get": {
+        "operationId": "getCurrentUserStatisticsV1",
+        "tags": ["Users"],
+        "summary": "Get lifetime profile statistics",
+        "responses": {
+          "200": {
+            "description": "Lifetime account statistics",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProfileStatisticsResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/users/register": {
+      "post": {
+        "operationId": "registerUserV1",
+        "tags": ["Users"],
+        "summary": "Register a credentials user",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterUserRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registered public user",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RegisterUserResponse" }
+              }
+            }
+          },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/api/v1/users/search": {
+      "get": {
+        "operationId": "searchUsersV1",
+        "tags": ["Users"],
+        "summary": "Search up to 10 other users by case-insensitive name substring",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Trimmed query. Missing or shorter than two characters returns an empty list.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching users",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserSearchResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "authjs.session-token",
+        "description": "Auth.js same-origin session cookie. Secure deployments may use the __Secure- prefixed cookie name."
+      }
+    },
+    "parameters": {
+      "IdPath": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "$ref": "#/components/schemas/OpaqueId" }
+      },
+      "TokenPath": {
+        "name": "token",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "responses": {
+      "EmptyObject": {
+        "description": "Successful mutation with an empty JSON object",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/EmptyObject" }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Malformed query according to route-specific checks",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/StringErrorEnvelope" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing authenticated Auth.js user",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/StringErrorEnvelope" },
+            "examples": {
+              "unauthorized": { "value": { "error": "Unauthorized" } }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Authenticated principal is not allowed to perform the operation",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/LegacyErrorEnvelope" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource is absent, invisible, or invite is invalid",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/LegacyErrorEnvelope" }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Domain conflict, duplicate registration, or exhausted Serializable retries",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/LegacyErrorEnvelope" }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "description": "Zod request validation error or domain validation error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/LegacyErrorEnvelope" }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "Required external exchange rate is unavailable",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ServiceErrorEnvelope" }
+          }
+        }
+      },
+      "InternalServerError": {
+        "description": "Explicit JSON fallback for an unexpected service or registration error. Uncaught framework failures can still use the framework's non-contract response.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ServiceErrorEnvelope" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "OpaqueId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Current persistence IDs are opaque strings (typically CUIDs)."
+      },
+      "Timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "description": "UTC ISO timestamp serialized explicitly by the v1 response mapper."
+      },
+      "CalendarDate": {
+        "type": "string",
+        "format": "date",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+        "description": "Strict literal business date. Timestamps are rejected.",
+        "examples": ["2026-09-13"]
+      },
+      "Currency": {
+        "type": "string",
+        "enum": [
+          "RUB", "USD", "EUR", "AMD", "GEL", "TRY", "THB", "AED", "GBP", "JPY",
+          "CNY", "CHF", "CZK", "PLN", "HUF", "KZT", "UZS", "BYN", "AZN", "INR"
+        ]
+      },
+      "MoneyInteger": {
+        "type": "integer",
+        "format": "int32",
+        "description": "Legacy persisted amount backed by a PostgreSQL integer, in the application's current minor-unit convention."
+      },
+      "AggregateMoneyInteger": {
+        "type": "integer",
+        "format": "int64",
+        "description": "A computed sum of multiple persisted amounts. The current JSON runtime emits it as a JavaScript number."
+      },
+      "EmptyObject": {
+        "type": "object",
+        "maxProperties": 0
+      },
+      "StringErrorEnvelope": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" }
+        }
+      },
+      "ZodFlattenedError": {
+        "type": "object",
+        "required": ["formErrors", "fieldErrors"],
+        "properties": {
+          "formErrors": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "fieldErrors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      },
+      "ValidationErrorEnvelope": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/ZodFlattenedError" }
+        }
+      },
+      "ServiceError": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
+      "ServiceErrorEnvelope": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/ServiceError" }
+        }
+      },
+      "LegacyErrorEnvelope": {
+        "description": "The v1 routes expose several incompatible error envelopes.",
+        "oneOf": [
+          { "$ref": "#/components/schemas/StringErrorEnvelope" },
+          { "$ref": "#/components/schemas/ValidationErrorEnvelope" },
+          { "$ref": "#/components/schemas/ServiceErrorEnvelope" }
+        ]
+      },
+      "UserSummary": {
+        "type": "object",
+        "required": ["id", "name", "avatarUrl"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "name": { "type": "string" },
+          "avatarUrl": { "type": ["string", "null"] }
+        }
+      },
+      "UserName": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "name": { "type": "string" }
+        }
+      },
+      "GroupMemberUser": {
+        "type": "object",
+        "required": ["id", "name", "avatarUrl"],
+        "description": "List/create responses contain the required summary fields. Group-detail responses additionally contain all three nullable payee fields.",
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "name": { "type": "string" },
+          "avatarUrl": { "type": ["string", "null"] },
+          "payeeName": { "type": ["string", "null"] },
+          "bankName": { "type": ["string", "null"] },
+          "payeeAccount": { "type": ["string", "null"] }
+        }
+      },
+      "Profile": {
+        "type": "object",
+        "required": [
+          "id", "name", "email", "avatarUrl", "payeeName", "bankName", "payeeAccount", "createdAt"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "avatarUrl": { "type": ["string", "null"] },
+          "payeeName": { "type": ["string", "null"] },
+          "bankName": { "type": ["string", "null"] },
+          "payeeAccount": { "type": ["string", "null"] },
+          "createdAt": { "$ref": "#/components/schemas/Timestamp" }
+        }
+      },
+      "PublicRegisteredUser": {
+        "type": "object",
+        "required": ["id", "email", "name", "avatarUrl"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "email": { "type": "string", "format": "email" },
+          "name": { "type": "string" },
+          "avatarUrl": { "type": ["string", "null"] }
+        }
+      },
+      "GroupMember": {
+        "type": "object",
+        "required": [
+          "id", "groupId", "userId", "role", "joinedAt", "isActive", "payeeName", "bankName",
+          "payeeAccount", "user"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "groupId": { "$ref": "#/components/schemas/OpaqueId" },
+          "userId": { "$ref": "#/components/schemas/OpaqueId" },
+          "role": { "type": "string", "enum": ["ADMIN", "MEMBER"] },
+          "joinedAt": { "$ref": "#/components/schemas/Timestamp" },
+          "isActive": { "type": "boolean" },
+          "payeeName": { "type": ["string", "null"] },
+          "bankName": { "type": ["string", "null"] },
+          "payeeAccount": { "type": ["string", "null"] },
+          "user": { "$ref": "#/components/schemas/GroupMemberUser" }
+        }
+      },
+      "Group": {
+        "type": "object",
+        "required": [
+          "id", "name", "description", "type", "currency", "createdById", "createdAt", "updatedAt", "members"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "name": { "type": "string" },
+          "description": { "type": ["string", "null"] },
+          "type": { "type": "string", "enum": ["HOME", "TRIP", "COUPLE", "OTHER"] },
+          "currency": { "$ref": "#/components/schemas/Currency" },
+          "createdById": { "$ref": "#/components/schemas/OpaqueId" },
+          "createdAt": { "$ref": "#/components/schemas/Timestamp" },
+          "updatedAt": { "$ref": "#/components/schemas/Timestamp" },
+          "members": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/GroupMember" }
+          },
+          "_count": {
+            "type": "object",
+            "required": ["expenses"],
+            "properties": {
+              "expenses": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      },
+      "ExpenseSplit": {
+        "type": "object",
+        "required": ["id", "expenseId", "userId", "amount", "amountBase", "share", "percentage", "user"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "expenseId": { "$ref": "#/components/schemas/OpaqueId" },
+          "userId": { "$ref": "#/components/schemas/OpaqueId" },
+          "amount": { "$ref": "#/components/schemas/MoneyInteger" },
+          "amountBase": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/MoneyInteger" },
+              { "type": "null" }
+            ]
+          },
+          "share": { "type": ["integer", "null"] },
+          "percentage": { "type": ["integer", "null"] },
+          "user": { "$ref": "#/components/schemas/UserSummary" }
+        }
+      },
+      "ExpenseCashSettlement": {
+        "type": "object",
+        "required": ["id", "amount", "currency", "amountBase", "fromUser"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "amount": { "$ref": "#/components/schemas/MoneyInteger" },
+          "currency": { "type": "string" },
+          "amountBase": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/MoneyInteger" },
+              { "type": "null" }
+            ]
+          },
+          "fromUser": { "$ref": "#/components/schemas/UserName" }
+        }
+      },
+      "Expense": {
+        "type": "object",
+        "required": [
+          "id", "groupId", "paidById", "createdById", "title", "amount", "currency", "amountBase",
+          "customRate", "category", "splitType", "date", "notes", "createdAt", "updatedAt", "paidBy",
+          "createdBy", "splits", "settlements"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "groupId": { "$ref": "#/components/schemas/OpaqueId" },
+          "paidById": { "$ref": "#/components/schemas/OpaqueId" },
+          "createdById": { "$ref": "#/components/schemas/OpaqueId" },
+          "title": { "type": "string" },
+          "amount": { "$ref": "#/components/schemas/MoneyInteger" },
+          "currency": { "type": "string" },
+          "amountBase": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/MoneyInteger" },
+              { "type": "null" }
+            ]
+          },
+          "customRate": { "type": ["number", "null"] },
+          "category": { "type": ["string", "null"] },
+          "splitType": { "type": "string", "enum": ["EQUAL", "EXACT", "PERCENTAGE"] },
+          "date": { "$ref": "#/components/schemas/Timestamp" },
+          "notes": { "type": ["string", "null"] },
+          "createdAt": { "$ref": "#/components/schemas/Timestamp" },
+          "updatedAt": { "$ref": "#/components/schemas/Timestamp" },
+          "paidBy": { "$ref": "#/components/schemas/UserSummary" },
+          "createdBy": { "$ref": "#/components/schemas/UserSummary" },
+          "splits": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExpenseSplit" }
+          },
+          "settlements": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExpenseCashSettlement" }
+          }
+        }
+      },
+      "Settlement": {
+        "type": "object",
+        "required": [
+          "id", "groupId", "expenseId", "fromUserId", "toUserId", "amount", "currency", "amountBase",
+          "date", "notes", "createdAt", "fromUser", "toUser"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "groupId": { "type": ["string", "null"] },
+          "expenseId": { "type": ["string", "null"] },
+          "fromUserId": { "$ref": "#/components/schemas/OpaqueId" },
+          "toUserId": { "$ref": "#/components/schemas/OpaqueId" },
+          "amount": { "$ref": "#/components/schemas/MoneyInteger" },
+          "currency": { "type": "string" },
+          "amountBase": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/MoneyInteger" },
+              { "type": "null" }
+            ]
+          },
+          "date": { "$ref": "#/components/schemas/Timestamp" },
+          "notes": { "type": ["string", "null"] },
+          "createdAt": { "$ref": "#/components/schemas/Timestamp" },
+          "fromUser": { "$ref": "#/components/schemas/UserSummary" },
+          "toUser": { "$ref": "#/components/schemas/UserSummary" }
+        }
+      },
+      "Activity": {
+        "type": "object",
+        "required": [
+          "id", "groupId", "actorId", "type", "entityType", "entityId", "metadata", "createdAt", "actor"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "groupId": { "type": ["string", "null"] },
+          "actorId": { "$ref": "#/components/schemas/OpaqueId" },
+          "type": {
+            "type": "string",
+            "enum": [
+              "EXPENSE_CREATED", "EXPENSE_UPDATED", "EXPENSE_DELETED", "SETTLEMENT_CREATED",
+              "SETTLEMENTS_RESET", "MEMBER_ADDED", "MEMBER_REMOVED", "GROUP_UPDATED"
+            ]
+          },
+          "entityType": { "type": "string" },
+          "entityId": { "type": "string" },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "createdAt": { "$ref": "#/components/schemas/Timestamp" },
+          "actor": { "$ref": "#/components/schemas/UserName" }
+        }
+      },
+      "Feedback": {
+        "type": "object",
+        "required": ["id", "userId", "message", "createdAt"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "userId": { "$ref": "#/components/schemas/OpaqueId" },
+          "message": { "type": "string" },
+          "createdAt": { "$ref": "#/components/schemas/Timestamp" },
+          "user": {
+            "type": "object",
+            "required": ["name", "email"],
+            "properties": {
+              "name": { "type": "string" },
+              "email": { "type": "string", "format": "email" }
+            }
+          }
+        }
+      },
+      "Achievement": {
+        "type": "object",
+        "required": [
+          "id", "title", "description", "category", "icon", "unlocked", "progress", "target", "percent", "hidden"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "category": {
+            "type": "string",
+            "enum": ["START", "ACTIVITY", "TEAM", "SETTLEMENTS", "MASTERY", "GROUPS"]
+          },
+          "icon": { "type": "string" },
+          "unlocked": { "type": "boolean" },
+          "progress": { "type": "integer", "minimum": 0 },
+          "target": { "type": "integer", "minimum": 1 },
+          "percent": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "hidden": { "type": "boolean" }
+        }
+      },
+      "AchievementUnlock": {
+        "type": "object",
+        "required": ["id", "title", "description", "icon"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "icon": { "type": "string" }
+        }
+      },
+      "CreateGroupRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "description": { "type": "string", "maxLength": 500 },
+          "type": { "type": "string", "enum": ["HOME", "TRIP", "COUPLE", "OTHER"], "default": "OTHER" },
+          "currency": { "allOf": [{ "$ref": "#/components/schemas/Currency" }], "default": "RUB" },
+          "memberIds": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/OpaqueId" },
+            "default": []
+          }
+        }
+      },
+      "UpdateGroupRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "description": { "type": "string", "maxLength": 500 }
+        }
+      },
+      "AddGroupMemberRequest": {
+        "type": "object",
+        "required": ["userId"],
+        "properties": {
+          "userId": { "$ref": "#/components/schemas/OpaqueId" }
+        }
+      },
+      "ExpenseSplitCommand": {
+        "type": "object",
+        "required": ["userId"],
+        "properties": {
+          "userId": { "$ref": "#/components/schemas/OpaqueId" },
+          "amount": { "type": "integer" },
+          "percentage": { "type": "integer" }
+        }
+      },
+      "CashPaymentCommand": {
+        "type": "object",
+        "required": ["userId", "amount"],
+        "properties": {
+          "userId": { "$ref": "#/components/schemas/OpaqueId" },
+          "amount": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "ExpenseCommand": {
+        "type": "object",
+        "required": ["title", "amount", "date", "paidById", "splitType", "splits"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "amount": { "type": "integer", "minimum": 1, "maximum": 2000000000 },
+          "currency": { "allOf": [{ "$ref": "#/components/schemas/Currency" }], "default": "RUB" },
+          "customRate": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+          "category": { "type": "string" },
+          "date": { "$ref": "#/components/schemas/CalendarDate" },
+          "paidById": { "$ref": "#/components/schemas/OpaqueId" },
+          "notes": { "type": "string", "maxLength": 1000 },
+          "splitType": { "type": "string", "enum": ["EQUAL", "EXACT", "PERCENTAGE"] },
+          "splits": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/components/schemas/ExpenseSplitCommand" }
+          },
+          "cashPayments": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CashPaymentCommand" }
+          }
+        }
+      },
+      "CreateSettlementRequest": {
+        "type": "object",
+        "required": ["groupId", "toUserId", "amount", "date"],
+        "properties": {
+          "groupId": { "$ref": "#/components/schemas/OpaqueId" },
+          "toUserId": { "$ref": "#/components/schemas/OpaqueId" },
+          "amount": { "type": "integer", "minimum": 1, "maximum": 2000000000 },
+          "currency": { "type": "string", "minLength": 3, "maxLength": 3, "default": "RUB" },
+          "date": { "$ref": "#/components/schemas/CalendarDate" },
+          "notes": { "type": "string", "maxLength": 500 }
+        }
+      },
+      "RequisitesRequest": {
+        "type": "object",
+        "description": "Empty strings are trimmed and stored as null. Non-empty strings are trimmed before persistence.",
+        "properties": {
+          "payeeName": { "type": ["string", "null"], "maxLength": 200 },
+          "bankName": { "type": ["string", "null"], "maxLength": 100 },
+          "payeeAccount": { "type": ["string", "null"], "maxLength": 100 }
+        }
+      },
+      "UpdateProfileRequest": {
+        "allOf": [
+          { "$ref": "#/components/schemas/RequisitesRequest" },
+          {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "avatarUrl": {
+                "type": ["string", "null"],
+                "format": "uri",
+                "pattern": "^[hH][tT][tT][pP][sS]?://"
+              }
+            }
+          }
+        ]
+      },
+      "CreateFeedbackRequest": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": { "type": "string", "minLength": 10, "maxLength": 2000 }
+        }
+      },
+      "RegisterUserRequest": {
+        "type": "object",
+        "required": ["email", "name", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "x-maxUtf8Bytes": 72,
+            "description": "Must occupy at most 72 UTF-8 bytes because v1 uses bcrypt. Character count alone is insufficient."
+          }
+        }
+      },
+      "GroupListResponse": {
+        "type": "object",
+        "required": ["groups"],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Group" }
+          }
+        }
+      },
+      "GroupResponse": {
+        "type": "object",
+        "required": ["group"],
+        "properties": {
+          "group": { "$ref": "#/components/schemas/Group" }
+        }
+      },
+      "GroupMemberResponse": {
+        "type": "object",
+        "required": ["member"],
+        "properties": {
+          "member": { "$ref": "#/components/schemas/GroupMember" }
+        }
+      },
+      "ExpenseResponse": {
+        "type": "object",
+        "required": ["expense"],
+        "properties": {
+          "expense": { "$ref": "#/components/schemas/Expense" }
+        }
+      },
+      "ExpensePageResponse": {
+        "type": "object",
+        "required": ["expenses", "total", "hasNext"],
+        "properties": {
+          "expenses": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Expense" }
+          },
+          "total": { "type": "integer", "minimum": 0 },
+          "hasNext": { "type": "boolean" }
+        }
+      },
+      "UserBalance": {
+        "type": "object",
+        "required": ["userId", "userName", "balance"],
+        "properties": {
+          "userId": { "$ref": "#/components/schemas/OpaqueId" },
+          "userName": { "type": "string" },
+          "balance": { "$ref": "#/components/schemas/AggregateMoneyInteger" }
+        }
+      },
+      "SimplifiedDebt": {
+        "type": "object",
+        "required": ["fromUserId", "fromUserName", "toUserId", "toUserName", "amount"],
+        "properties": {
+          "fromUserId": { "$ref": "#/components/schemas/OpaqueId" },
+          "fromUserName": { "type": "string" },
+          "toUserId": { "$ref": "#/components/schemas/OpaqueId" },
+          "toUserName": { "type": "string" },
+          "amount": { "$ref": "#/components/schemas/AggregateMoneyInteger" }
+        }
+      },
+      "GroupBalances": {
+        "type": "object",
+        "required": ["simplified", "raw"],
+        "properties": {
+          "simplified": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SimplifiedDebt" }
+          },
+          "raw": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/UserBalance" }
+          }
+        }
+      },
+      "GroupBalancesResponse": {
+        "type": "object",
+        "required": ["balances"],
+        "properties": {
+          "balances": { "$ref": "#/components/schemas/GroupBalances" }
+        }
+      },
+      "CurrencyTotal": {
+        "type": "object",
+        "required": ["currency", "owed", "owe"],
+        "properties": {
+          "currency": { "type": "string" },
+          "owed": { "$ref": "#/components/schemas/AggregateMoneyInteger" },
+          "owe": { "$ref": "#/components/schemas/AggregateMoneyInteger" }
+        }
+      },
+      "FriendBalance": {
+        "type": "object",
+        "required": ["userId", "userName", "avatarUrl", "balance", "currency", "groups"],
+        "properties": {
+          "userId": { "$ref": "#/components/schemas/OpaqueId" },
+          "userName": { "type": "string" },
+          "avatarUrl": { "type": ["string", "null"] },
+          "balance": { "$ref": "#/components/schemas/AggregateMoneyInteger" },
+          "currency": { "type": "string" },
+          "groups": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "BalanceOverview": {
+        "type": "object",
+        "required": ["totals", "friendBalances"],
+        "properties": {
+          "totals": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CurrencyTotal" }
+          },
+          "friendBalances": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/FriendBalance" }
+          }
+        }
+      },
+      "SettlementResponse": {
+        "type": "object",
+        "required": ["settlement"],
+        "properties": {
+          "settlement": { "$ref": "#/components/schemas/Settlement" }
+        }
+      },
+      "SettlementListResponse": {
+        "type": "object",
+        "required": ["settlements"],
+        "properties": {
+          "settlements": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Settlement" }
+          }
+        }
+      },
+      "ResetSettlementsResponse": {
+        "type": "object",
+        "required": ["removed"],
+        "properties": {
+          "removed": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "InviteTokenResponse": {
+        "type": "object",
+        "required": ["token"],
+        "properties": {
+          "token": { "type": "string" }
+        }
+      },
+      "InviteInfoResponse": {
+        "type": "object",
+        "required": ["invite"],
+        "properties": {
+          "invite": {
+            "type": "object",
+            "required": ["groupId", "groupName", "memberCount", "isAlreadyMember"],
+            "properties": {
+              "groupId": { "$ref": "#/components/schemas/OpaqueId" },
+              "groupName": { "type": "string" },
+              "memberCount": { "type": "integer", "minimum": 0 },
+              "isAlreadyMember": { "type": "boolean" }
+            }
+          }
+        }
+      },
+      "AcceptInviteResponse": {
+        "type": "object",
+        "required": ["groupId"],
+        "properties": {
+          "groupId": { "$ref": "#/components/schemas/OpaqueId" }
+        }
+      },
+      "RequisitesResponse": {
+        "type": "object",
+        "required": ["requisites"],
+        "properties": {
+          "requisites": {
+            "type": "object",
+            "required": ["payeeName", "bankName", "payeeAccount"],
+            "properties": {
+              "payeeName": { "type": ["string", "null"] },
+              "bankName": { "type": ["string", "null"] },
+              "payeeAccount": { "type": ["string", "null"] }
+            }
+          }
+        }
+      },
+      "ActivityListResponse": {
+        "type": "object",
+        "required": ["activities"],
+        "properties": {
+          "activities": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Activity" }
+          }
+        }
+      },
+      "FeedbackResponse": {
+        "type": "object",
+        "required": ["feedback"],
+        "properties": {
+          "feedback": { "$ref": "#/components/schemas/Feedback" }
+        }
+      },
+      "FeedbackListResponse": {
+        "type": "object",
+        "required": ["feedbacks"],
+        "properties": {
+          "feedbacks": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Feedback" }
+          }
+        }
+      },
+      "ProfileResponse": {
+        "type": "object",
+        "required": ["user"],
+        "properties": {
+          "user": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/Profile" },
+              { "type": "null" }
+            ]
+          }
+        }
+      },
+      "RegisterUserResponse": {
+        "type": "object",
+        "required": ["user"],
+        "properties": {
+          "user": { "$ref": "#/components/schemas/PublicRegisteredUser" }
+        }
+      },
+      "UserSearchResponse": {
+        "type": "object",
+        "required": ["users"],
+        "properties": {
+          "users": {
+            "type": "array",
+            "maxItems": 10,
+            "items": { "$ref": "#/components/schemas/UserSummary" }
+          }
+        }
+      },
+      "AchievementCollection": {
+        "type": "object",
+        "required": ["summary", "achievements"],
+        "properties": {
+          "summary": {
+            "type": "object",
+            "required": ["unlocked", "total"],
+            "properties": {
+              "unlocked": { "type": "integer", "minimum": 0 },
+              "total": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "achievements": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Achievement" }
+          }
+        }
+      },
+      "AchievementUnlocksResponse": {
+        "type": "object",
+        "required": ["unlocked"],
+        "properties": {
+          "unlocked": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/AchievementUnlock" }
+          }
+        }
+      },
+      "MoneyTotal": {
+        "type": "object",
+        "required": ["currency", "amount"],
+        "properties": {
+          "currency": { "type": "string" },
+          "amount": { "$ref": "#/components/schemas/AggregateMoneyInteger" }
+        }
+      },
+      "ProfileStatisticsResponse": {
+        "type": "object",
+        "required": ["statistics"],
+        "properties": {
+          "statistics": {
+            "type": "object",
+            "required": ["money", "overview", "splits", "collaboration", "groups", "mastery", "records"],
+            "properties": {
+              "money": {
+                "type": "object",
+                "required": ["spent", "returned"],
+                "properties": {
+                  "spent": { "type": "array", "items": { "$ref": "#/components/schemas/MoneyTotal" } },
+                  "returned": { "type": "array", "items": { "$ref": "#/components/schemas/MoneyTotal" } }
+                }
+              },
+              "overview": { "$ref": "#/components/schemas/StatisticOverview" },
+              "splits": { "$ref": "#/components/schemas/StatisticSplits" },
+              "collaboration": { "$ref": "#/components/schemas/StatisticCollaboration" },
+              "groups": { "$ref": "#/components/schemas/StatisticGroups" },
+              "mastery": { "$ref": "#/components/schemas/StatisticMastery" },
+              "records": { "$ref": "#/components/schemas/StatisticRecords" }
+            }
+          }
+        }
+      },
+      "StatisticOverview": {
+        "type": "object",
+        "required": ["expensesParticipated", "expensesCreated", "expensesPaid", "activeGroups"],
+        "properties": {
+          "expensesParticipated": { "type": "integer", "minimum": 0 },
+          "expensesCreated": { "type": "integer", "minimum": 0 },
+          "expensesPaid": { "type": "integer", "minimum": 0 },
+          "activeGroups": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "StatisticSplits": {
+        "type": "object",
+        "required": ["equal", "exact", "percentage"],
+        "properties": {
+          "equal": { "type": "integer", "minimum": 0 },
+          "exact": { "type": "integer", "minimum": 0 },
+          "percentage": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "StatisticCollaboration": {
+        "type": "object",
+        "required": [
+          "uniquePeople", "settlementsSent", "settlementsReceived", "cashSettlements", "invitesCreated", "createdForOthers"
+        ],
+        "properties": {
+          "uniquePeople": { "type": "integer", "minimum": 0 },
+          "settlementsSent": { "type": "integer", "minimum": 0 },
+          "settlementsReceived": { "type": "integer", "minimum": 0 },
+          "cashSettlements": { "type": "integer", "minimum": 0 },
+          "invitesCreated": { "type": "integer", "minimum": 0 },
+          "createdForOthers": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "StatisticGroups": {
+        "type": "object",
+        "required": ["created", "home", "trip", "couple", "other"],
+        "properties": {
+          "created": { "type": "integer", "minimum": 0 },
+          "home": { "type": "integer", "minimum": 0 },
+          "trip": { "type": "integer", "minimum": 0 },
+          "couple": { "type": "integer", "minimum": 0 },
+          "other": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "StatisticMastery": {
+        "type": "object",
+        "required": ["currenciesUsed", "splitMethodsUsed", "customRates"],
+        "properties": {
+          "currenciesUsed": { "type": "integer", "minimum": 0 },
+          "splitMethodsUsed": { "type": "integer", "minimum": 0 },
+          "customRates": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "StatisticRecords": {
+        "type": "object",
+        "required": [
+          "maxExpenseParticipants", "maxPaidParticipants", "maxGroupMembers", "maxGroupExpenses", "accountAgeDays"
+        ],
+        "properties": {
+          "maxExpenseParticipants": { "type": "integer", "minimum": 0 },
+          "maxPaidParticipants": { "type": "integer", "minimum": 0 },
+          "maxGroupMembers": { "type": "integer", "minimum": 0 },
+          "maxGroupExpenses": { "type": "integer", "minimum": 0 },
+          "accountAgeDays": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

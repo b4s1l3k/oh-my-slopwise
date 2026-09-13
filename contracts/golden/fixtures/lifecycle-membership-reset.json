@@ -1,0 +1,200 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "lifecycle-membership-reset",
+  "description": "Expense mutation guards, settlement reset scope and membership reactivation behavior.",
+  "cases": [
+    {
+      "id": "lifecycle.expense-author-may-edit",
+      "description": "The expense author may edit while active.",
+      "operation": "expense.authorizeMutation",
+      "input": { "action": "EDIT", "actorId": "author", "actorActive": true, "actorRole": "MEMBER", "createdById": "author", "paidById": "payer", "hasRequestedCashPayments": false, "inactiveBalancesAfter": [0] },
+      "expected": { "ok": true, "value": { "accepted": true, "action": "EDIT" } }
+    },
+    {
+      "id": "lifecycle.expense-payer-may-edit",
+      "description": "The current payer may edit an expense created by somebody else.",
+      "operation": "expense.authorizeMutation",
+      "input": { "action": "EDIT", "actorId": "payer", "actorActive": true, "actorRole": "MEMBER", "createdById": "author", "paidById": "payer", "hasRequestedCashPayments": false, "inactiveBalancesAfter": [] },
+      "expected": { "ok": true, "value": { "accepted": true, "action": "EDIT" } }
+    },
+    {
+      "id": "lifecycle.expense-admin-may-edit",
+      "description": "An active group administrator may edit another member's expense.",
+      "operation": "expense.authorizeMutation",
+      "input": { "action": "EDIT", "actorId": "admin", "actorActive": true, "actorRole": "ADMIN", "createdById": "author", "paidById": "payer", "hasRequestedCashPayments": false, "inactiveBalancesAfter": [] },
+      "expected": { "ok": true, "value": { "accepted": true, "action": "EDIT" } }
+    },
+    {
+      "id": "lifecycle.expense-unrelated-member-cannot-edit",
+      "description": "An unrelated regular member cannot edit the expense.",
+      "operation": "expense.authorizeMutation",
+      "input": { "action": "EDIT", "actorId": "other", "actorActive": true, "actorRole": "MEMBER", "createdById": "author", "paidById": "payer", "hasRequestedCashPayments": false, "inactiveBalancesAfter": [] },
+      "expected": { "ok": false, "error": { "code": "FORBIDDEN" } }
+    },
+    {
+      "id": "lifecycle.expense-inactive-author-cannot-edit",
+      "description": "Historical authors lose mutation access after leaving the group.",
+      "operation": "expense.authorizeMutation",
+      "input": { "action": "EDIT", "actorId": "author", "actorActive": false, "actorRole": "MEMBER", "createdById": "author", "paidById": "payer", "hasRequestedCashPayments": false, "inactiveBalancesAfter": [] },
+      "expected": { "ok": false, "error": { "code": "FORBIDDEN" } }
+    },
+    {
+      "id": "lifecycle.expense-edit-cannot-recreate-cash",
+      "description": "Cash payments are create-only and cannot be submitted again during edit.",
+      "operation": "expense.authorizeMutation",
+      "input": { "action": "EDIT", "actorId": "author", "actorActive": true, "actorRole": "MEMBER", "createdById": "author", "paidById": "payer", "hasRequestedCashPayments": true, "inactiveBalancesAfter": [] },
+      "expected": { "ok": false, "error": { "code": "CASH_PAYMENTS_CREATE_ONLY" } }
+    },
+    {
+      "id": "lifecycle.expense-edit-cannot-recreate-inactive-debt",
+      "description": "An edit is rolled back if it leaves any inactive participant with a non-zero raw position.",
+      "operation": "expense.authorizeMutation",
+      "input": { "action": "EDIT", "actorId": "author", "actorActive": true, "actorRole": "MEMBER", "createdById": "author", "paidById": "payer", "hasRequestedCashPayments": false, "inactiveBalancesAfter": [0, -1] },
+      "expected": { "ok": false, "error": { "code": "INACTIVE_MEMBER_HAS_BALANCE" } }
+    },
+    {
+      "id": "lifecycle.expense-author-may-delete",
+      "description": "The active expense author may delete the legacy aggregate when inactive positions stay zero.",
+      "operation": "expense.authorizeMutation",
+      "input": { "action": "DELETE", "actorId": "author", "actorActive": true, "actorRole": "MEMBER", "createdById": "author", "paidById": "payer", "hasRequestedCashPayments": false, "inactiveBalancesAfter": [0] },
+      "expected": { "ok": true, "value": { "accepted": true, "action": "DELETE" } }
+    },
+    {
+      "id": "lifecycle.expense-payer-cannot-delete-others",
+      "description": "Being payer alone does not grant delete permission.",
+      "operation": "expense.authorizeMutation",
+      "input": { "action": "DELETE", "actorId": "payer", "actorActive": true, "actorRole": "MEMBER", "createdById": "author", "paidById": "payer", "hasRequestedCashPayments": false, "inactiveBalancesAfter": [] },
+      "expected": { "ok": false, "error": { "code": "FORBIDDEN" } }
+    },
+    {
+      "id": "lifecycle.expense-admin-may-delete",
+      "description": "An active administrator may delete another author's legacy expense.",
+      "operation": "expense.authorizeMutation",
+      "input": { "action": "DELETE", "actorId": "admin", "actorActive": true, "actorRole": "ADMIN", "createdById": "author", "paidById": "payer", "hasRequestedCashPayments": false, "inactiveBalancesAfter": [] },
+      "expected": { "ok": true, "value": { "accepted": true, "action": "DELETE" } }
+    },
+    {
+      "id": "lifecycle.reset-admin-removes-only-manual",
+      "description": "Reset removes manual settlements but preserves expense-linked cash settlements.",
+      "operation": "settlement.reset",
+      "input": { "actorActive": true, "actorRole": "ADMIN", "settlements": [{ "id": "manual-1", "relatedExpenseId": null }, { "id": "cash-1", "relatedExpenseId": "expense-1" }, { "id": "manual-2", "relatedExpenseId": null }], "inactiveBalancesAfter": [] },
+      "expected": { "ok": true, "value": { "removed": 2, "removedIds": ["manual-1", "manual-2"], "remainingIds": ["cash-1"] } }
+    },
+    {
+      "id": "lifecycle.reset-empty-is-idempotent",
+      "description": "Resetting a group with no settlements is a successful no-op.",
+      "operation": "settlement.reset",
+      "input": { "actorActive": true, "actorRole": "ADMIN", "settlements": [], "inactiveBalancesAfter": [] },
+      "expected": { "ok": true, "value": { "removed": 0, "removedIds": [], "remainingIds": [] } }
+    },
+    {
+      "id": "lifecycle.reset-member-forbidden",
+      "description": "A regular member cannot reset settlements.",
+      "operation": "settlement.reset",
+      "input": { "actorActive": true, "actorRole": "MEMBER", "settlements": [], "inactiveBalancesAfter": [] },
+      "expected": { "ok": false, "error": { "code": "FORBIDDEN" } }
+    },
+    {
+      "id": "lifecycle.reset-inactive-admin-forbidden",
+      "description": "Historical admin role does not grant reset access to an inactive membership.",
+      "operation": "settlement.reset",
+      "input": { "actorActive": false, "actorRole": "ADMIN", "settlements": [], "inactiveBalancesAfter": [] },
+      "expected": { "ok": false, "error": { "code": "FORBIDDEN" } }
+    },
+    {
+      "id": "lifecycle.reset-rolls-back-inactive-debt",
+      "description": "Reset is rejected atomically if deleting manual settlements would recreate inactive debt.",
+      "operation": "settlement.reset",
+      "input": { "actorActive": true, "actorRole": "ADMIN", "settlements": [{ "id": "manual-1", "relatedExpenseId": null }], "inactiveBalancesAfter": [10] },
+      "expected": { "ok": false, "error": { "code": "INACTIVE_MEMBER_HAS_BALANCE" } }
+    },
+    {
+      "id": "lifecycle.invite-new-member",
+      "description": "Accepting a valid invite creates an active regular membership and history entry.",
+      "operation": "membership.acceptInvite",
+      "input": { "inviteExists": true, "revoked": false, "groupId": "g", "membership": null },
+      "expected": { "ok": true, "value": { "groupId": "g", "membership": { "active": true, "role": "MEMBER" }, "historyAdded": true } }
+    },
+    {
+      "id": "lifecycle.invite-active-member-idempotent",
+      "description": "Accepting again as an active member changes nothing and adds no history.",
+      "operation": "membership.acceptInvite",
+      "input": { "inviteExists": true, "revoked": false, "groupId": "g", "membership": { "active": true, "role": "ADMIN" } },
+      "expected": { "ok": true, "value": { "groupId": "g", "membership": { "active": true, "role": "ADMIN" }, "historyAdded": false } }
+    },
+    {
+      "id": "lifecycle.invite-reactivation-demotes-old-admin",
+      "description": "A returning inactive administrator is reactivated as a regular member.",
+      "operation": "membership.acceptInvite",
+      "input": { "inviteExists": true, "revoked": false, "groupId": "g", "membership": { "active": false, "role": "ADMIN" } },
+      "expected": { "ok": true, "value": { "groupId": "g", "membership": { "active": true, "role": "MEMBER" }, "historyAdded": true } }
+    },
+    {
+      "id": "lifecycle.invite-revoked",
+      "description": "A revoked invite is indistinguishable from an invalid invite.",
+      "operation": "membership.acceptInvite",
+      "input": { "inviteExists": true, "revoked": true, "groupId": "g", "membership": null },
+      "expected": { "ok": false, "error": { "code": "INVITE_INVALID" } }
+    },
+    {
+      "id": "lifecycle.invite-missing",
+      "description": "A missing invite returns the stable invalid-invite code.",
+      "operation": "membership.acceptInvite",
+      "input": { "inviteExists": false, "revoked": false, "groupId": "g", "membership": null },
+      "expected": { "ok": false, "error": { "code": "INVITE_INVALID" } }
+    },
+    {
+      "id": "lifecycle.cash-edit-payer-change",
+      "description": "Changing the expense payer repoints linked cash repayment statistics and recipient.",
+      "operation": "expense.reconcileCashOnEdit",
+      "input": { "paidById": "new-payer", "title": "Dinner corrected", "date": "2026-06-02", "splitAmountsBase": { "cash-user": 50 }, "settlements": [{ "id": "cash-1", "fromUserId": "cash-user", "toUserId": "old-payer", "amount": 40, "currency": "USD", "amountBase": 36 }] },
+      "expected": { "ok": true, "value": { "settlements": [{ "id": "cash-1", "fromUserId": "cash-user", "toUserId": "new-payer", "amount": 40, "currency": "USD", "amountBase": 36, "date": "2026-06-02T00:00:00.000Z", "notes": "К расходу «Dinner corrected»" }] } }
+    },
+    {
+      "id": "lifecycle.cash-edit-preserves-money-semantics",
+      "description": "Editing an expense never reinterprets the amount, original currency or reconciled base amount of cash already handed over.",
+      "operation": "expense.reconcileCashOnEdit",
+      "input": { "paidById": "payer", "title": "Now in EUR", "date": "2026-06-03", "splitAmountsBase": { "cash-user": 1000 }, "settlements": [{ "id": "cash-1", "fromUserId": "cash-user", "toUserId": "payer", "amount": 123, "currency": "USD", "amountBase": 456 }] },
+      "expected": { "ok": true, "value": { "settlements": [{ "id": "cash-1", "fromUserId": "cash-user", "toUserId": "payer", "amount": 123, "currency": "USD", "amountBase": 456, "date": "2026-06-03T00:00:00.000Z", "notes": "К расходу «Now in EUR»" }] } }
+    },
+    {
+      "id": "lifecycle.cash-edit-cannot-remove-participant",
+      "description": "An edit cannot remove a participant whose linked cash repayment remains.",
+      "operation": "expense.reconcileCashOnEdit",
+      "input": { "paidById": "payer", "title": "Dinner", "date": "2026-06-02", "splitAmountsBase": {}, "settlements": [{ "id": "cash-1", "fromUserId": "cash-user", "toUserId": "payer", "amount": 40, "currency": "RUB", "amountBase": 40 }] },
+      "expected": { "ok": false, "error": { "code": "CASH_PAYMENT_INVALID" } }
+    },
+    {
+      "id": "lifecycle.cash-edit-cannot-shrink-below-paid",
+      "description": "An edited share cannot become smaller than cash already returned by that participant.",
+      "operation": "expense.reconcileCashOnEdit",
+      "input": { "paidById": "payer", "title": "Dinner", "date": "2026-06-02", "splitAmountsBase": { "cash-user": 39 }, "settlements": [{ "id": "cash-1", "fromUserId": "cash-user", "toUserId": "payer", "amount": 40, "currency": "RUB", "amountBase": 40 }] },
+      "expected": { "ok": false, "error": { "code": "CASH_PAYMENT_INVALID" } }
+    },
+    {
+      "id": "ledger.edit-target-revision-policy",
+      "description": "The target edit appends an immutable revision and reversal postings instead of replacing current financial rows.",
+      "operation": "ledger.mutationPolicy",
+      "input": { "command": "EXPENSE_EDIT" },
+      "expected": { "ok": true, "value": { "command": "EXPENSE_EDIT", "aggregateIdentity": "STABLE", "history": "IMMUTABLE_REVISION", "financialEffect": "REVERSE_AND_APPEND" } },
+      "expectedByAdapter": { "legacy": { "ok": true, "value": { "command": "EXPENSE_EDIT", "aggregateIdentity": "STABLE", "history": "MUTABLE_FACTS", "financialEffect": "REPLACE_CURRENT_ROWS" } } }
+    },
+    {
+      "id": "ledger.delete-target-void-policy",
+      "description": "The target never physically deletes an expense; it appends VOID and exact reversal postings.",
+      "operation": "ledger.mutationPolicy",
+      "input": { "command": "EXPENSE_DELETE" },
+      "expected": { "ok": true, "value": { "command": "EXPENSE_DELETE", "aggregateIdentity": "STABLE", "history": "IMMUTABLE_VOID_REVISION", "financialEffect": "EXACT_REVERSAL" } },
+      "expectedByAdapter": { "legacy": { "ok": true, "value": { "command": "EXPENSE_DELETE", "aggregateIdentity": "REMOVED", "history": "PARTIALLY_RETAINED_FACTS", "financialEffect": "CASCADE_DELETE" } } }
+    },
+    {
+      "id": "ledger.reset-target-batch-void-policy",
+      "description": "The target settlement reset is a batch of immutable voids rather than deleteMany.",
+      "operation": "ledger.mutationPolicy",
+      "input": { "command": "SETTLEMENT_RESET" },
+      "expected": { "ok": true, "value": { "command": "SETTLEMENT_RESET", "aggregateIdentity": "STABLE", "history": "IMMUTABLE_VOID_REVISION", "financialEffect": "REVERSE_MANUAL_ONLY" } },
+      "expectedByAdapter": { "legacy": { "ok": true, "value": { "command": "SETTLEMENT_RESET", "aggregateIdentity": "REMOVED", "history": "RETAINED_FACTS", "financialEffect": "DELETE_MANUAL_ONLY" } } }
+    }
+  ]
+}

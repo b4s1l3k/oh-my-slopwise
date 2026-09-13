@@ -1,22 +1,21 @@
 "use client"
 
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
 import { Trophy } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { Achievement, AchievementCategory } from "@/lib/achievements"
+import { QueryErrorState } from "@/components/ui/query-error-state"
+import type {
+  AchievementCategoryViewModel,
+  AchievementViewModel,
+} from "@/lib/api/view-models/models"
 import { getAchievementIcon } from "@/lib/achievement-icons"
 import { cn } from "@/lib/utils"
+import { useAchievementsQuery } from "@/hooks/api/use-achievements"
 
-type AchievementsResponse = {
-  summary: { unlocked: number; total: number }
-  achievements: Achievement[]
-}
-
-const categoryLabels: Record<AchievementCategory, string> = {
+const categoryLabels: Record<AchievementCategoryViewModel, string> = {
   START: "Первые шаги",
   ACTIVITY: "Активность",
   TEAM: "Вместе",
@@ -25,7 +24,7 @@ const categoryLabels: Record<AchievementCategory, string> = {
   GROUPS: "Группы",
 }
 
-function AchievementCard({ achievement }: { achievement: Achievement }) {
+function AchievementCard({ achievement }: { achievement: AchievementViewModel }) {
   const Icon = getAchievementIcon(achievement.icon)
   const secret = achievement.hidden && !achievement.unlocked
 
@@ -81,14 +80,7 @@ function AchievementCard({ achievement }: { achievement: Achievement }) {
 
 export function AchievementsSection() {
   const [showAll, setShowAll] = useState(false)
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["achievements"],
-    queryFn: async () => {
-      const response = await fetch("/api/v1/users/me/achievements")
-      if (!response.ok) throw new Error("Failed to load achievements")
-      return (await response.json()) as AchievementsResponse
-    },
-  })
+  const { data, isLoading, isError, refetch } = useAchievementsQuery()
 
   if (isLoading) {
     return (
@@ -110,8 +102,13 @@ export function AchievementsSection() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Ачивки</CardTitle>
-          <CardDescription>Не удалось загрузить достижения. Попробуйте обновить страницу.</CardDescription>
         </CardHeader>
+        <CardContent>
+          <QueryErrorState
+            title="Не удалось загрузить достижения"
+            onRetry={() => void refetch()}
+          />
+        </CardContent>
       </Card>
     )
   }

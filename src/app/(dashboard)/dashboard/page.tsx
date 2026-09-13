@@ -1,5 +1,4 @@
 "use client"
-import { useQuery } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import Link from "next/link"
 import { formatMoney } from "@/lib/utils/format"
@@ -7,39 +6,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
+import { QueryErrorState } from "@/components/ui/query-error-state"
 import { Users, TrendingUp, TrendingDown, Plus } from "lucide-react"
-
-type CurrencyTotal = { currency: string; owed: number; owe: number }
-type FriendBalance = {
-  userId: string
-  userName: string
-  balance: number
-  currency: string
-  groups: string[]
-}
-
-async function fetchOverview() {
-  const res = await fetch("/api/v1/balances/overview")
-  if (!res.ok) throw new Error("Failed to fetch")
-  return res.json() as Promise<{ totals: CurrencyTotal[]; friendBalances: FriendBalance[] }>
-}
-
-async function fetchGroups() {
-  const res = await fetch("/api/v1/groups")
-  if (!res.ok) throw new Error("Failed to fetch")
-  return res.json()
-}
+import { useGroups } from "@/hooks/api/use-groups"
+import { useOverviewBalances } from "@/hooks/api/use-settlements"
 
 export default function DashboardPage() {
   const { data: session } = useSession()
-  const { data: overview, isLoading: loadingOverview } = useQuery({
-    queryKey: ["overview"],
-    queryFn: fetchOverview,
-  })
-  const { data: groupsData, isLoading: loadingGroups } = useQuery({
-    queryKey: ["groups"],
-    queryFn: fetchGroups,
-  })
+  const {
+    data: overview,
+    isLoading: loadingOverview,
+    isError: overviewError,
+    refetch: refetchOverview,
+  } = useOverviewBalances()
+  const {
+    data: groupsData,
+    isLoading: loadingGroups,
+    isError: groupsError,
+    refetch: refetchGroups,
+  } = useGroups()
 
   const totals = overview?.totals ?? []
   const friends = overview?.friendBalances ?? []
@@ -63,6 +48,11 @@ export default function DashboardPage() {
         <CardContent>
           {loadingOverview ? (
             <Skeleton className="h-10 w-40" />
+          ) : overviewError ? (
+            <QueryErrorState
+              title="Не удалось загрузить баланс"
+              onRetry={() => void refetchOverview()}
+            />
           ) : totals.length === 0 ? (
             <p className="text-muted-foreground">Все расчёты завершены 🎉</p>
           ) : (
@@ -148,7 +138,12 @@ export default function DashboardPage() {
               <Skeleton key={i} className="h-20 w-full" />
             ))}
           </div>
-        ) : groupsData?.groups?.length === 0 ? (
+        ) : groupsError ? (
+          <QueryErrorState
+            title="Не удалось загрузить группы"
+            onRetry={() => void refetchGroups()}
+          />
+        ) : groupsData?.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <Users className="h-12 w-12 text-muted-foreground mb-3" />
@@ -163,8 +158,8 @@ export default function DashboardPage() {
           </Card>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {groupsData?.groups?.map(
-              (group: { id: string; name: string; type: string; members: unknown[] }) => (
+            {groupsData?.map(
+              (group) => (
                 <Link key={group.id} href={`/groups/${group.id}`}>
                   <Card className="hover:shadow-md transition-shadow cursor-pointer">
                     <CardContent className="p-4">

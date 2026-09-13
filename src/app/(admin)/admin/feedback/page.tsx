@@ -1,27 +1,13 @@
 "use client"
-import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { QueryErrorState } from "@/components/ui/query-error-state"
 import { formatDateTime } from "@/lib/utils/format"
 import { MessageSquare } from "lucide-react"
-
-type FeedbackItem = {
-  id: string
-  message: string
-  createdAt: string
-  user: { name: string; email: string }
-}
+import { useAdminFeedbackQuery } from "@/hooks/api/use-feedback"
 
 export default function AdminFeedbackPage() {
-  const { data, isLoading } = useQuery<FeedbackItem[]>({
-    queryKey: ["admin", "feedback"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/admin/feedback")
-      if (!res.ok) throw new Error("Ошибка загрузки")
-      const json = await res.json()
-      return json.feedbacks
-    },
-  })
+  const { data, isLoading, isError, refetch } = useAdminFeedbackQuery()
 
   return (
     <div className="space-y-6">
@@ -36,6 +22,11 @@ export default function AdminFeedbackPage() {
         <div className="space-y-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
         </div>
+      ) : isError ? (
+        <QueryErrorState
+          title="Не удалось загрузить обратную связь"
+          onRetry={() => void refetch()}
+        />
       ) : !data?.length ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">

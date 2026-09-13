@@ -1,6 +1,6 @@
 # Архитектура SLOPwise Personal
 
-Документы `01`–`08` описывают фактическую архитектуру приложения по состоянию на 12 сентября 2026 года и построены по исходному коду, Prisma-схеме, миграциям, конфигурации и тестам. Документ `09` — отдельное предложение по целевой архитектуре и миграции, а не реализованное состояние. Планы из соседних файлов `docs/*-plan.md` также не считаются реализованной архитектурой, если соответствующего кода ещё нет.
+Документы `01`–`08` описывают фактическую архитектуру приложения по состоянию на 13 сентября 2026 года и построены по исходному коду, Prisma-схеме, миграциям, конфигурации и тестам. Документ `09` — отдельное предложение по целевой архитектуре, а не реализованное состояние. Планы из соседних файлов `docs/*-plan.md` также не считаются реализованной архитектурой, если соответствующего кода ещё нет.
 
 ## Навигация
 
@@ -13,6 +13,10 @@
 7. [Тестирование и качество](07-testing-and-quality.md) — тестовые контуры, команды и покрытие.
 8. [Ограничения и развитие](08-known-constraints.md) — технические ограничения, расхождения документации и планы.
 9. [Целевая архитектура и полное переписывание](09-target-architecture-and-full-rewrite.md) — Kotlin backend, client-agnostic API, web/WebView/native-клиенты и критерии будущего выделения сервисов.
+
+### Принятые ADR
+
+- [ADR 001: Семантика финансового домена](adr/001-domain-semantics.md) — Money, даты, FX, immutable revisions и ledger, membership, debt/privacy и статистика.
 
 ## Краткая характеристика
 
@@ -34,7 +38,11 @@ SLOPwise Personal — single-module full-stack приложение для уч�
 
 ```text
 React page/component
-  -> fetch /api/v1/*
+  -> feature hook (src/hooks/api)
+  -> TanStack Query + centralized query keys/invalidation
+  -> domain API client
+  -> shared HTTP client
+  -> /api/v1/* or configured backend base URL
   -> Next.js route handler
   -> session check + Zod validation
   -> service function
@@ -50,10 +58,11 @@ React page/component
 |---|---|---|
 | Страницы и layouts | `src/app` | Маршрутизация, server/client boundaries, композиция экранов |
 | HTTP API | `src/app/api` | Аутентификация запроса, парсинг, валидация, HTTP-ответ |
+| Frontend application boundary | `src/hooks/api` | Query/mutation options, query keys, cancellation, pagination и cache invalidation |
 | Прикладная логика | `src/services` | Use cases, права на доменные операции, транзакции, orchestration |
 | Чистая логика и cross-cutting helpers | `src/lib` | Расчёты, схемы Zod, auth/config, Prisma singleton, форматирование |
 | UI | `src/components` | Формы, layout, профиль, достижения, переиспользуемые UI primitives |
-| Общие типы | `src/types` | Prisma-derived типы; сейчас используются ограниченно |
+| Общие типы | `src/types` | Алиасы явных API DTO; Prisma-типы в public type surface не используются |
 | Модель БД | `prisma/schema.prisma` | Сущности, отношения, индексы и referential actions |
 | Эволюция БД | `prisma/migrations` | Последовательность SQL-миграций и backfill статистики |
 | Развёртывание | `Dockerfile`, `docker-entrypoint.sh` | Standalone image, применение миграций, запуск Next.js |
@@ -67,10 +76,13 @@ React page/component
 - Там, где use case создаёт activity и/или lifetime facts, эти записи выполняются в той же транзакции; покрытие событий не является полным.
 - Балансы вычисляются из расходов и расчётов, а не хранятся отдельным изменяемым агрегатом.
 - Полученные достижения и lifetime-факты сохраняются независимо от удаляемых групп и расходов.
+- Feature pages/components не импортируют domain API clients и не создают TanStack
+  queries/mutations напрямую. `src/hooks/api` является единственной прикладной границей
+  frontend; router, toast, session и form state остаются в UI.
 
 ## Статус проверки
 
-- На 12 сентября 2026 года для `HEAD 05f7644`: `npx tsc --noEmit` проходит без ошибок.
-- Обычный `npm test`: 306 тестов проходят, 96 DB-зависимых сценариев пропускаются по feature flag.
-- Production `npm run build` проходит при доступе к Google Fonts.
-- Полный `npm run test:db` на защищённом `TEST_DATABASE_URL`: 402 теста проходят; guard запрещает application DB и имя без маркера `test`.
+- На 13 сентября 2026 года working tree основан на baseline `d0fa6d9`; `npx tsc --noEmit` проходит без ошибок.
+- Обычный `npm test`: 448 тестов проходят, 101 DB-зависимый сценарий пропускается по feature flag.
+- Production `npm run build` проходит.
+- Полный `npm run test:db` на защищённом `TEST_DATABASE_URL`: 549 тестов проходят; guard запрещает application DB и имя без маркера `test`.

@@ -1,19 +1,14 @@
-const CALENDAR_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})(.*)$/
+const CALENDAR_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 
 /**
- * Converts a date-only value (or a legacy ISO timestamp) into the UTC midnight
- * that represents its literal calendar day. The timestamp offset must not
- * change the business date chosen by the client.
+ * Converts a strict date-only value into the UTC midnight that represents its
+ * literal calendar day.
  */
 export function parseCalendarDate(value: string): Date {
   const match = CALENDAR_DATE_PATTERN.exec(value)
   if (!match) throw new Error("INVALID_CALENDAR_DATE")
 
-  const [, yearText, monthText, dayText, suffix] = match
-  if (suffix && (!suffix.startsWith("T") || Number.isNaN(new Date(value).getTime()))) {
-    throw new Error("INVALID_CALENDAR_DATE")
-  }
-
+  const [, yearText, monthText, dayText] = match
   const year = Number(yearText)
   const month = Number(monthText)
   const day = Number(dayText)

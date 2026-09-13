@@ -1,9 +1,9 @@
 "use client"
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
 import { formatMoney, formatDateTime } from "@/lib/utils/format"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { QueryErrorState } from "@/components/ui/query-error-state"
 import { cn } from "@/lib/utils"
 import {
   Activity,
@@ -17,53 +17,11 @@ import {
   Settings,
   type LucideIcon,
 } from "lucide-react"
-
-type ActivityItem = {
-  id: string
-  type: string
-  createdAt: string
-  actor: { id: string; name: string } | null
-  metadata: {
-    title?: string
-    amount?: number
-    currency?: string
-    toUserName?: string
-    cashFromUserName?: string
-    memberName?: string
-    selfLeft?: boolean
-    viaInvite?: boolean
-    name?: string
-    changes?: string[]
-    removed?: number
-  }
-}
-type GroupActivity = { id: string; name: string; activities: ActivityItem[] }
-
+import { useActivity } from "@/hooks/api/use-activity"
+import type { ActivityItemViewModel } from "@/lib/api/view-models/models"
 export default function ActivityPage() {
   const [selected, setSelected] = useState<string>("all")
-
-  const { data: groups = [], isLoading } = useQuery<GroupActivity[]>({
-    queryKey: ["activity"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/groups").then((r) => r.json())
-      const list: { id: string; name: string }[] = res?.groups ?? []
-      const withActivity = await Promise.all(
-        list.map(async (g) => {
-          const d = await fetch(`/api/v1/groups/${g.id}/activity`)
-            .then((r) => r.json())
-            .catch(() => ({ activities: [] }))
-          return { id: g.id, name: g.name, activities: d.activities ?? [] } as GroupActivity
-        })
-      )
-      return withActivity
-        .filter((g) => g.activities.length > 0)
-        .sort(
-          (a, b) =>
-            new Date(b.activities[0].createdAt).getTime() -
-            new Date(a.activities[0].createdAt).getTime()
-        )
-    },
-  })
+  const { data: groups = [], isLoading, isError, refetch } = useActivity()
 
   const visible = selected === "all" ? groups : groups.filter((g) => g.id === selected)
 
@@ -80,6 +38,11 @@ export default function ActivityPage() {
             <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
+      ) : isError ? (
+        <QueryErrorState
+          title="Не удалось загрузить активность"
+          onRetry={() => void refetch()}
+        />
       ) : groups.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
@@ -202,7 +165,7 @@ function ActivityDot({ type }: { type: string }) {
   )
 }
 
-function activityText(a: ActivityItem): string {
+function activityText(a: ActivityItemViewModel): string {
   const m = a.metadata ?? {}
   switch (a.type) {
     case "EXPENSE_CREATED":

@@ -3,6 +3,10 @@ import { createExpenseSchema } from "@/lib/validations/expense"
 import * as expensesService from "@/services/expenses.service"
 import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
+import {
+  toExpensePageResponse,
+  toExpenseResponse,
+} from "@/lib/api/v1/response-mappers"
 
 
 type Params = { params: Promise<{ id: string }> }
@@ -21,7 +25,7 @@ export async function GET(req: Request, { params }: Params) {
 
   try {
     const result = await expensesService.getGroupExpenses(groupId, session.user.id, page)
-    return NextResponse.json(result)
+    return NextResponse.json(toExpensePageResponse(result))
   } catch (e) {
     return handleServiceError(e)
   }
@@ -40,7 +44,7 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     const expense = await expensesService.createExpense(groupId, session.user.id, parsed.data)
-    return NextResponse.json({ expense }, { status: 201 })
+    return NextResponse.json(toExpenseResponse(expense), { status: 201 })
   } catch (e) {
     return handleServiceError(e)
   }

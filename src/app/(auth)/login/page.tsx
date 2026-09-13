@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2, Split } from "lucide-react"
+import { getSafeAuthCallback } from "@/lib/auth-callback"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -32,7 +33,7 @@ export default function LoginPage() {
     if (result?.error) {
       setError("Неверный email или пароль")
     } else {
-      const cb = new URLSearchParams(window.location.search).get("callbackUrl") || "/"
+      const cb = getSafeAuthCallback(new URLSearchParams(window.location.search).get("callbackUrl"))
       router.push(cb)
       router.refresh()
     }

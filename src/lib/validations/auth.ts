@@ -7,8 +7,8 @@ export function isPasswordWithinBcryptLimit(password: string): boolean {
 }
 
 export const registrationSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1).max(100),
+  email: z.string().trim().toLowerCase().email(),
+  name: z.string().trim().min(1).max(100),
   password: z
     .string()
     .min(8, "Пароль минимум 8 символов")

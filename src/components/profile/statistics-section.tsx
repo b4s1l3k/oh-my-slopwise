@@ -1,6 +1,5 @@
 "use client"
 
-import { useQuery } from "@tanstack/react-query"
 import {
   BarChart3,
   CalendarDays,
@@ -12,11 +11,8 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { ProfileStatistics } from "@/lib/statistics"
-
-type StatisticsResponse = {
-  statistics: ProfileStatistics
-}
+import { QueryErrorState } from "@/components/ui/query-error-state"
+import { useStatisticsQuery } from "@/hooks/api/use-achievements"
 
 const numberFormatter = new Intl.NumberFormat("ru-RU")
 
@@ -68,14 +64,7 @@ function DetailRow({ label, value }: { label: string; value: number | string }) 
 }
 
 export function StatisticsSection() {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["statistics"],
-    queryFn: async () => {
-      const response = await fetch("/api/v1/users/me/statistics")
-      if (!response.ok) throw new Error("Failed to load statistics")
-      return (await response.json()) as StatisticsResponse
-    },
-  })
+  const { data, isLoading, isError, refetch } = useStatisticsQuery()
 
   if (isLoading) {
     return (
@@ -98,13 +87,18 @@ export function StatisticsSection() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Статистика</CardTitle>
-          <CardDescription>Не удалось загрузить статистику. Попробуйте обновить страницу.</CardDescription>
         </CardHeader>
+        <CardContent>
+          <QueryErrorState
+            title="Не удалось загрузить статистику"
+            onRetry={() => void refetch()}
+          />
+        </CardContent>
       </Card>
     )
   }
 
-  const statistics = data.statistics
+  const statistics = data
   const splitTotal = statistics.splits.equal + statistics.splits.exact + statistics.splits.percentage
 
   return (

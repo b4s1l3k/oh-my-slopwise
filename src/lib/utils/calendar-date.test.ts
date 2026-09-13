@@ -6,9 +6,10 @@ describe("parseCalendarDate", () => {
     expect(parseCalendarDate("2026-08-01").toISOString()).toBe("2026-08-01T00:00:00.000Z")
   })
 
-  it("keeps the literal business day from a legacy timestamp with an offset", () => {
-    expect(parseCalendarDate("2026-08-01T23:30:00-07:00").toISOString()).toBe(
-      "2026-08-01T00:00:00.000Z"
+  it("rejects timestamps instead of silently discarding their time and offset", () => {
+    expect(isValidCalendarDate("2026-08-01T23:30:00-07:00")).toBe(false)
+    expect(() => parseCalendarDate("2026-08-01T23:30:00-07:00")).toThrow(
+      "INVALID_CALENDAR_DATE"
     )
   })
 

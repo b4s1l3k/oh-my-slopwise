@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { toUserSearchResponse } from "@/lib/api/v1/response-mappers"
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -8,7 +9,7 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url)
   const q = url.searchParams.get("q")?.trim()
-  if (!q || q.length < 2) return NextResponse.json({ users: [] })
+  if (!q || q.length < 2) return NextResponse.json(toUserSearchResponse([]))
 
   const users = await prisma.user.findMany({
     where: {
@@ -18,7 +19,8 @@ export async function GET(req: Request) {
       ],
     },
     select: { id: true, name: true, avatarUrl: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
     take: 10,
   })
-  return NextResponse.json({ users })
+  return NextResponse.json(toUserSearchResponse(users))
 }

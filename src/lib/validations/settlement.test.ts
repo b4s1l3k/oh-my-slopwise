@@ -6,7 +6,7 @@ const base = {
   toUserId: "recipient",
   amount: 10_000,
   currency: "RUB",
-  date: "2026-08-01T12:00:00.000Z",
+  date: "2026-08-01",
 }
 
 describe("createSettlementSchema", () => {
@@ -52,6 +52,10 @@ describe("createSettlementSchema", () => {
 
   it("некорректная дата отклоняется", () => {
     expect(createSettlementSchema.safeParse({ ...base, date: "не дата" }).success).toBe(false)
+    expect(
+      createSettlementSchema.safeParse({ ...base, date: "2026-08-01T12:00:00.000Z" })
+        .success
+    ).toBe(false)
   })
 
   it("notes опциональны и ограничены 500 символами", () => {

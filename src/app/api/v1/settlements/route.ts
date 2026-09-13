@@ -3,6 +3,7 @@ import { createSettlementSchema } from "@/lib/validations/settlement"
 import * as settlementsService from "@/services/settlements.service"
 import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
+import { toSettlementResponse } from "@/lib/api/v1/response-mappers"
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
 
   try {
     const settlement = await settlementsService.createSettlement(session.user.id, parsed.data)
-    return NextResponse.json({ settlement }, { status: 201 })
+    return NextResponse.json(toSettlementResponse(settlement), { status: 201 })
   } catch (e) {
     return handleServiceError(e)
   }

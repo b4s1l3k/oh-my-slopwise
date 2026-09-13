@@ -7,7 +7,13 @@ import {
 } from "@/services/statistics-history.service"
 import type { CreateGroupInput, UpdateGroupInput } from "@/lib/validations/group"
 
-const memberInclude = {
+const memberSelect = {
+  id: true,
+  groupId: true,
+  userId: true,
+  role: true,
+  joinedAt: true,
+  isActive: true,
   user: {
     select: {
       id: true,
@@ -15,9 +21,13 @@ const memberInclude = {
       avatarUrl: true,
     },
   },
-}
+} as const
 
-const memberWithRequisitesInclude = {
+const memberWithRequisitesSelect = {
+  ...memberSelect,
+  payeeName: true,
+  bankName: true,
+  payeeAccount: true,
   user: {
     select: {
       id: true,
@@ -28,7 +38,7 @@ const memberWithRequisitesInclude = {
       payeeAccount: true,
     },
   },
-}
+} as const
 
 export async function getUserGroups(userId: string) {
   const memberships = await prisma.groupMember.findMany({
@@ -36,7 +46,7 @@ export async function getUserGroups(userId: string) {
     include: {
       group: {
         include: {
-          members: { where: { isActive: true }, include: memberInclude },
+          members: { where: { isActive: true }, select: memberSelect },
           _count: { select: { expenses: true } },
         },
       },
@@ -50,7 +60,7 @@ export async function getGroup(groupId: string, userId: string) {
   const group = await prisma.group.findUnique({
     where: { id: groupId },
     include: {
-      members: { where: { isActive: true }, include: memberWithRequisitesInclude },
+      members: { where: { isActive: true }, select: memberWithRequisitesSelect },
       _count: { select: { expenses: true } },
     },
   })
@@ -106,7 +116,7 @@ export async function createGroup(userId: string, data: CreateGroupInput) {
           })),
         },
       },
-      include: { members: { include: memberInclude } },
+      include: { members: { select: memberSelect } },
     })
     await recordGroupCreated(tx, group, memberIds)
     return group
@@ -128,7 +138,7 @@ export async function updateGroup(
     const group = await tx.group.update({
       where: { id: groupId },
       data: { name: data.name, description: data.description },
-      include: { members: { where: { isActive: true }, include: memberInclude } },
+      include: { members: { where: { isActive: true }, select: memberSelect } },
     })
     await tx.activityLog.create({
       data: {
@@ -186,7 +196,7 @@ export async function addMember(groupId: string, adminId: string, memberId: stri
       create: { groupId, userId: memberId, role: "MEMBER" },
       // Возвращаем участника без прежних административных привилегий.
       update: { isActive: true, role: "MEMBER" },
-      include: memberInclude,
+      select: memberSelect,
     })
     await tx.activityLog.create({
       data: {
@@ -212,7 +222,7 @@ export async function removeMember(groupId: string, adminId: string, memberId: s
     select: { name: true },
   })
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     const actor = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId: adminId } },
     })

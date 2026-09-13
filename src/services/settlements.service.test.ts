@@ -15,7 +15,7 @@ const runDatabaseTests = process.env.RUN_DB_INTEGRATION_TESTS === "true"
 const describeDatabase = runDatabaseTests ? describe : describe.skip
 const testPrefix = `settlements-service-${Date.now()}`
 
-const SETTLE_DATE = "2026-06-01T12:00:00.000Z"
+const SETTLE_DATE = "2026-06-01"
 
 let userCounter = 0
 async function createUser(name: string) {

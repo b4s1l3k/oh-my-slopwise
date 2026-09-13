@@ -1,0 +1,176 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "transport-validation-boundaries",
+  "description": "Strict request validation, normalization, defaults and unknown-field behavior.",
+  "cases": [
+    {
+      "id": "validation.expense-minimum",
+      "description": "The smallest positive expense amount is accepted.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 1, "date": "2026-01-01", "paidById": "a", "splitType": "EXACT", "splits": [{ "userId": "a", "amount": 1 }] },
+      "expected": { "ok": true, "value": { "accepted": true, "fields": [] } }
+    },
+    {
+      "id": "validation.expense-maximum",
+      "description": "The documented expense input maximum is accepted exactly.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 2000000000, "date": "2026-01-01", "paidById": "a", "splitType": "EXACT", "splits": [{ "userId": "a", "amount": 2000000000 }] },
+      "expected": { "ok": true, "value": { "accepted": true, "fields": [] } }
+    },
+    {
+      "id": "validation.expense-over-maximum",
+      "description": "One minor unit above the expense maximum is rejected.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 2000000001, "date": "2026-01-01", "paidById": "a", "splitType": "EQUAL", "splits": [{ "userId": "a" }] },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["amount"] } }
+    },
+    {
+      "id": "validation.expense-fractional-minor-unit",
+      "description": "Fractional minor units are rejected at the transport boundary.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 100.5, "date": "2026-01-01", "paidById": "a", "splitType": "EQUAL", "splits": [{ "userId": "a" }] },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["amount"] } }
+    },
+    {
+      "id": "validation.expense-duplicate-participant",
+      "description": "The same participant cannot appear in an expense twice.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 2, "date": "2026-01-01", "paidById": "a", "splitType": "EXACT", "splits": [{ "userId": "a", "amount": 1 }, { "userId": "a", "amount": 1 }] },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["splits"] } }
+    },
+    {
+      "id": "validation.expense-exact-total-mismatch",
+      "description": "Exact shares must equal the expense amount.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 3, "date": "2026-01-01", "paidById": "a", "splitType": "EXACT", "splits": [{ "userId": "a", "amount": 1 }, { "userId": "b", "amount": 1 }] },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["splits"] } }
+    },
+    {
+      "id": "validation.expense-percentage-total-mismatch",
+      "description": "Percentage shares must total exactly ten thousand basis points.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 100, "date": "2026-01-01", "paidById": "a", "splitType": "PERCENTAGE", "splits": [{ "userId": "a", "percentage": 5000 }, { "userId": "b", "percentage": 4999 }] },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["splits"] } }
+    },
+    {
+      "id": "validation.expense-zero-percentage",
+      "description": "Every percentage participant must receive a positive share.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 100, "date": "2026-01-01", "paidById": "a", "splitType": "PERCENTAGE", "splits": [{ "userId": "a", "percentage": 10000 }, { "userId": "b", "percentage": 0 }] },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["splits"] } }
+    },
+    {
+      "id": "validation.expense-cash-payer-forbidden",
+      "description": "The payer cannot also return cash to themselves.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 100, "date": "2026-01-01", "paidById": "a", "splitType": "EQUAL", "splits": [{ "userId": "a" }], "cashPayments": [{ "userId": "a", "amount": 1 }] },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["cashPayments"] } }
+    },
+    {
+      "id": "validation.expense-cash-outsider-forbidden",
+      "description": "Cash payments are accepted only from expense participants.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 100, "date": "2026-01-01", "paidById": "a", "splitType": "EQUAL", "splits": [{ "userId": "a" }, { "userId": "b" }], "cashPayments": [{ "userId": "c", "amount": 1 }] },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["cashPayments"] } }
+    },
+    {
+      "id": "validation.expense-cash-over-share",
+      "description": "Cash returned at creation cannot exceed that participant's share.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 100, "date": "2026-01-01", "paidById": "a", "splitType": "EQUAL", "splits": [{ "userId": "a" }, { "userId": "b" }], "cashPayments": [{ "userId": "b", "amount": 51 }] },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["cashPayments"] } }
+    },
+    {
+      "id": "validation.expense-custom-rate-maximum",
+      "description": "The legacy custom-rate maximum is accepted exactly.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 1, "currency": "USD", "customRate": 1000000, "date": "2026-01-01", "paidById": "a", "splitType": "EQUAL", "splits": [{ "userId": "a" }] },
+      "expected": { "ok": true, "value": { "accepted": true, "fields": [] } }
+    },
+    {
+      "id": "validation.expense-custom-rate-over-maximum",
+      "description": "A custom rate above the accepted range is rejected.",
+      "operation": "expense.validateCommand",
+      "input": { "title": "x", "amount": 1, "currency": "USD", "customRate": 1000000.0001, "date": "2026-01-01", "paidById": "a", "splitType": "EQUAL", "splits": [{ "userId": "a" }] },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["customRate"] } }
+    },
+    {
+      "id": "validation.expense-unknown-field-stripped",
+      "description": "Unknown JSON properties do not leak into the parsed transport DTO.",
+      "operation": "expense.parseCommand",
+      "input": { "title": "Lunch", "amount": 100, "date": "2026-01-01", "paidById": "a", "splitType": "EQUAL", "splits": [{ "userId": "a", "admin": true }], "admin": true },
+      "expected": { "ok": true, "value": { "accepted": true, "fields": [], "value": { "title": "Lunch", "amount": 100, "currency": "RUB", "date": "2026-01-01", "paidById": "a", "splitType": "EQUAL", "splits": [{ "userId": "a" }] } } }
+    },
+    {
+      "id": "validation.settlement-default-and-unknown-field",
+      "description": "Settlement parsing applies the currency default and strips privilege-looking fields.",
+      "operation": "settlement.parseCommand",
+      "input": { "groupId": "g", "toUserId": "b", "amount": 1, "date": "2026-01-01", "isAdmin": true },
+      "expected": { "ok": true, "value": { "accepted": true, "fields": [], "value": { "groupId": "g", "toUserId": "b", "amount": 1, "currency": "RUB", "date": "2026-01-01" } } }
+    },
+    {
+      "id": "validation.settlement-maximum",
+      "description": "The settlement amount maximum is inclusive.",
+      "operation": "settlement.validateCommand",
+      "input": { "groupId": "g", "toUserId": "b", "amount": 2000000000, "currency": "USD", "date": "2026-01-01" },
+      "expected": { "ok": true, "value": { "accepted": true, "fields": [] } }
+    },
+    {
+      "id": "validation.settlement-over-maximum",
+      "description": "A settlement above the input maximum is rejected.",
+      "operation": "settlement.validateCommand",
+      "input": { "groupId": "g", "toUserId": "b", "amount": 2000000001, "date": "2026-01-01" },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["amount"] } }
+    },
+    {
+      "id": "validation.settlement-currency-length",
+      "description": "Settlement currency codes must contain exactly three characters.",
+      "operation": "settlement.validateCommand",
+      "input": { "groupId": "g", "toUserId": "b", "amount": 1, "currency": "US", "date": "2026-01-01" },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["currency"] } }
+    },
+    {
+      "id": "validation.group-normalizes-and-defaults",
+      "description": "Group name and description are trimmed while type, currency and members receive defaults.",
+      "operation": "group.validateCreate",
+      "input": { "name": "  Trip  ", "description": "  Summer  ", "owner": "attacker" },
+      "expected": { "ok": true, "value": { "accepted": true, "fields": [], "value": { "name": "Trip", "description": "Summer", "type": "OTHER", "currency": "RUB", "memberIds": [] } } }
+    },
+    {
+      "id": "validation.group-whitespace-name",
+      "description": "A group name containing only whitespace is rejected after normalization.",
+      "operation": "group.validateCreate",
+      "input": { "name": "   " },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["name"] } }
+    },
+    {
+      "id": "validation.group-empty-update",
+      "description": "The legacy update DTO accepts a no-op empty object.",
+      "operation": "group.validateUpdate",
+      "input": { "role": "ADMIN" },
+      "expected": { "ok": true, "value": { "accepted": true, "fields": [], "value": {} } }
+    },
+    {
+      "id": "validation.registration-normalizes-identity",
+      "description": "Registration lowercases and trims email, trims name and never echoes the password.",
+      "operation": "auth.validateRegistration",
+      "input": { "email": "  USER@Example.COM ", "name": "  Alice  ", "password": "12345678", "role": "ADMIN" },
+      "expected": { "ok": true, "value": { "accepted": true, "fields": [], "value": { "email": "user@example.com", "name": "Alice", "passwordBytes": 8 } } }
+    },
+    {
+      "id": "validation.registration-short-password",
+      "description": "A seven-character password is rejected.",
+      "operation": "auth.validateRegistration",
+      "input": { "email": "user@example.com", "name": "Alice", "password": "1234567" },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["password"] } }
+    },
+    {
+      "id": "validation.registration-invalid-email",
+      "description": "Malformed email addresses are rejected after trimming.",
+      "operation": "auth.validateRegistration",
+      "input": { "email": "not-an-email", "name": "Alice", "password": "12345678" },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["email"] } }
+    }
+  ]
+}

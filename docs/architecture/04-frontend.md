@@ -89,26 +89,51 @@ Route groups в скобках организуют layouts и не входят
 
 ## Получение данных
 
-Прикладные API-данные не prefetch-ятся server-side и не гидратируются в Query cache. Server components при этом выполняют `auth()` и выбирают layout. После прохождения server layout guard client page делает собственные HTTP-запросы к same-origin `/api/v1`.
+Прикладные API-данные не prefetch-ятся server-side и не гидратируются в Query cache. Server components при этом выполняют `auth()` и выбирают layout. После прохождения server layout guard client page вызывает feature hook из `src/hooks/api`; hook настраивает TanStack Query и обращается к domain API client. По умолчанию HTTP client использует same-origin `/api/v1`; build-time base URL задаётся через `NEXT_PUBLIC_API_BASE_URL` и для его смены нужен новый web build. Пока авторизация основана на Auth.js cookie, вынесенный backend следует публиковать через same-origin reverse proxy/BFF. Прямой cross-origin вызов потребует отдельного bearer/OIDC и CORS-контракта.
 
 ```mermaid
 sequenceDiagram
     participant S as Server layout
     participant B as Browser page
+    participant H as src/hooks/api
     participant Q as TanStack Query
     participant A as /api/v1
 
     S->>S: auth()
     S-->>B: page shell
-    B->>Q: useQuery/useInfiniteQuery
-    Q->>A: fetch JSON
+    B->>H: feature hook
+    H->>Q: query/mutation options
+    Q->>A: domain API client → shared HTTP client → fetch JSON
     A-->>Q: response
-    Q-->>B: cached data/state
+    Q-->>H: cached data/state
+    H-->>B: typed hook result
 ```
 
-Отдельного API client, query-key factory, generated DTO и общего error decoder нет. Fetch functions и response types обычно располагаются внутри page/component; `src/types/index.ts` используется ограниченно.
+Единая HTTP-граница находится в `src/lib/api/client`: только `http-client.ts`
+вызывает `fetch`, а domain clients скрывают base URL и сборку URL. Feature pages и
+components не импортируют эти clients напрямую: их единственная прикладная граница —
+hooks из `src/hooks/api`.
+HTTP client централизует cookie credentials, optional bearer token, JSON encode/decode,
+`204`/`205`, `AbortSignal`, request ID и нормализацию transport-ошибок в `ApiError`.
+Hooks централизуют query/mutation options, проброс cancellation signal, pagination и
+cache invalidation. `query-keys.ts` является единственным каталогом ключей, а
+`invalidation.ts` описывает зависимости записей от cached projections. Option factories
+экспортируются отдельно от thin `useQuery`/`useMutation` wrappers и тестируются без UI.
 
-JSON responses не проходят runtime schema validation: TypeScript casts/generics не защищают от изменившегося Prisma-derived response shape.
+Архитектурный тест сканирует весь `src`, запрещает обход HTTP client, прямой импорт
+domain API clients вне `src/hooks/api` и прямой TanStack Query в feature pages/components.
+Два намеренных infrastructure-исключения — корневой `Providers` и
+`AchievementWatcher`, которому нужен доступ к global MutationCache. Явные transport DTO
+хранятся централизованно в `src/lib/api/v1/response-dtos.ts`; generated DTO пока нет.
+API clients используют эти DTO только как тип wire-контракта. На границе feature hooks
+каждый transport-ответ явно преобразуется mapper-ами из `src/lib/api/view-models/mappers.ts`
+в самостоятельные модели из `src/lib/api/view-models/models.ts`. Query cache поэтому
+хранит уже `GroupViewModel`, `ExpenseViewModel`, `ProfileViewModel` и другие UI-модели,
+а не transport envelopes. Например, техническое `_count.expenses` преобразуется в
+стабильное `expenseCount`. Feature pages и components не импортируют transport DTO;
+это ограничение, как и запрет локальных копий моделей, проверяет архитектурный тест.
+
+JSON responses на клиенте не проходят runtime schema validation: явные backend mapper-ы стабилизируют wire shape, но TypeScript casts/generics не обнаружат нарушение контракта во время выполнения.
 
 `SessionProvider` не получает session, уже прочитанную server layout-ом. Поэтому browser отдельно загружает client session; имя пользователя и admin navigation могут появиться после первоначального shell render.
 
@@ -120,11 +145,14 @@ JSON responses не проходят runtime schema validation: TypeScript casts
 | `['groups']` | `GET /groups` | Dashboard и список групп |
 | `['group', groupId]` | `GET /groups/:id` | Group workspace/settings |
 | `['expenses', groupId]` | `GET /groups/:id/expenses?page=N` | Infinite query расходов |
+| `['expenses', groupId, 'detail', expenseId]` | `GET /expenses/:id` | Query hook существует; текущий экран использует строку из списка |
 | `['balances', groupId]` | `GET /groups/:id/balances` | Workspace группы |
+| `['settlements', groupId]` | `GET /groups/:id/settlements` | Query hook существует; отдельного экрана истории пока нет |
 | `['activity']` | `GET /groups`, затем fan-out по `/groups/:id/activity` | Общая лента активности |
 | `['profile']` | `GET /users/me` | Профиль |
 | `['statistics']` | `GET /users/me/statistics` | Статистика профиля |
 | `['achievements']` | `GET /users/me/achievements` | Достижения |
+| `['users', 'search', normalizedQuery]` | `GET /users/search?q=` | Поиск участников; query выключен для строки короче двух символов |
 | `['invite', token]` | `GET /invites/:token` | Страница приглашения |
 | `['admin', 'feedback']` | `GET /admin/feedback` | Admin page |
 
@@ -132,31 +160,33 @@ Expense list использует page-based `useInfiniteQuery`. Сервер в
 
 ## Мутации и инвалидация
 
-Optimistic updates не используются. Для перечисленных мутаций компоненты вручную инвалидируют указанные keys; совпавшие active queries TanStack Query перечитывает. Глобальной invalidation policy нет.
+Optimistic updates не используются. Mutation hooks вызывают централизованные правила
+из `invalidation.ts`; components отвечают только за toast, dialog state, session update и
+navigation. Совпавшие active queries TanStack Query перечитывает, а удалённые сущности
+удаляются из cache явно.
 
 | Сценарий | Инвалидируемые ключи |
 |---|---|
-| Создание/изменение/удаление расхода | expenses группы, balances группы, overview |
-| Создание расчёта | balances группы, overview |
-| Сброс расчётов | balances группы, overview |
-| Rename/member/requisites в settings | group, groups, balances |
-| Создание группы | groups |
-| Выход/удаление группы | groups |
-| Изменение профиля | profile и широкие prefixes group/groups/expenses/balances, overview, achievements, statistics |
-| Requisites nudge | profile + group либо только group |
-| Новое достижение | achievements |
-| Принятие invite | Явной invalidation нет; выполняется переход в новую группу |
+| Создание группы | groups, overview, activity, achievements, statistics |
+| Rename/requisites/member add/remove | groups, group detail, activity, group balances, overview, achievements, statistics |
+| Выход из группы | Предыдущий набор; group detail, group expense list, group balances и group settlements удаляются из cache |
+| Удаление группы | предыдущий набор; group detail, group expense list, group balances и group settlements удаляются из cache |
+| Создание расхода | groups, group detail, expenses, group balances, overview, activity, achievements, statistics |
+| Изменение расхода | набор создания плюс expense detail |
+| Удаление расхода | набор создания; expense detail удаляется из cache |
+| Создание/сброс расчётов | groups, group detail, group balances, overview, group settlements, activity, achievements, statistics |
+| Создание invite | achievements, statistics |
+| Отзыв invite | Все cached invite keys по prefix `invite` |
+| Принятие invite | group-набор и текущий invite token |
+| Изменение профиля | profile и prefixes group/groups/expenses/balances/settlements/user search, overview, activity, achievements, statistics, admin feedback |
+| Создание feedback | admin feedback |
+| Получение новых achievement unlocks | achievements, только если ответ непустой |
+| Регистрация | Cache invalidation отсутствует; затем выполняется отдельный Auth.js sign-in |
 
-Фактические пробелы cache coherence:
-
-- activity не инвалидируется после доменных мутаций;
-- statistics обычно не инвалидируется после действий, меняющих lifetime-факты;
-- groups не инвалидируется после расхода, хотя меняются `updatedAt` и expense count;
-- groups также не инвалидируется после settlement/reset (`updatedAt`) и принятия invite;
-- rename группы не инвалидирует overview, где отображаются имена групп;
-- debt-changing expense/settlement/reset не инвалидируют group projection с условно видимыми реквизитами;
-- leave/delete инвалидирует groups, но оставляет cached group/expenses/balances/activity удалённой группы;
-- QueryClient явно не очищается при смене identity и полагается на полную навигацию Auth.js.
+QueryClient явно не очищается при смене identity и полагается на полную навигацию
+Auth.js. Правила намеренно используют широкие invalidation prefixes вместо точечного
+patch/normalized entity cache: это надёжнее для текущего размера, но создаёт лишние
+повторные запросы.
 
 ## Глобальные UI-механизмы
 
@@ -166,7 +196,7 @@ Optimistic updates не используются. Для перечисленн�
 
 ### Achievement watcher
 
-`AchievementWatcher` подписывается на global MutationCache. При установлении authenticated session state и после каждой успешной TanStack mutation он с debounce 500 мс вызывает явный POST unseen achievements. Полученные награды показывает с интервалом 900 мс и инвалидирует achievement query. Ошибка этого вспомогательного потока сознательно подавляется.
+`AchievementWatcher` подписывается на global MutationCache. При установлении authenticated session state и после каждой успешной TanStack mutation он с debounce 500 мс вызывает stable callback `useCollectUnseenAchievements`. Callback намеренно не является mutation hook, иначе собственный успешный POST рекурсивно запускал бы watcher. Полученные награды показываются с интервалом 900 мс; непустой ответ инвалидирует achievement query. Ошибка этого вспомогательного потока сознательно подавляется.
 
 ### Theme
 
@@ -178,8 +208,9 @@ Optimistic updates не используются. Для перечисленн�
 
 - Expense form переводит decimal input в integer scale через `parseMoneyInput` и отдельно обрабатывает `RATE_UNAVAILABLE`.
 - Settlement/group/profile/settings имеют собственные способы декодирования ошибок.
-- User search в new group/settings запускается от двух символов без debounce, cancellation и защиты от out-of-order responses.
-- В new-group форме состояние `searching` вычисляется, но не визуализируется.
+- User search в new group/settings запускается от двух символов через общий query hook;
+  TanStack Query отменяет устаревший request и разделяет cache по нормализованной строке,
+  но debounce отсутствует.
 
 ## Компонентные слои
 
@@ -209,7 +240,9 @@ Optimistic updates не используются. Для перечисленн�
 - group settings page — около 446 строк;
 - expense form — около 414 строк.
 
-Эти файлы одновременно содержат HTTP orchestration, локальные DTO, permission-derived UI, финансовое view state, диалоги и разметку.
+HTTP orchestration и cache policy из этих файлов уже вынесены в `src/hooks/api`, но они
+по-прежнему объединяют локальные view types, permission-derived UI, финансовое form/view
+state, диалоги и разметку.
 
 ## Пользовательские сценарии
 

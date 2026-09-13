@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { NextResponse } from "next/server"
+import { toActivityListResponse } from "@/lib/api/v1/response-mappers"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -21,5 +22,5 @@ export async function GET(req: Request, { params }: Params) {
     take: 50,
   })
 
-  return NextResponse.json({ activities })
+  return NextResponse.json(toActivityListResponse(activities))
 }

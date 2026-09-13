@@ -31,9 +31,17 @@ export function MobileNav() {
   const extraLabel = isAdmin ? "Админ" : "Отзыв"
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background flex">
+    <nav
+      aria-label="Мобильная навигация"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background flex"
+    >
       {navItems.map(({ href, label, icon: Icon }) => (
-        <Link key={href} href={href} className="flex-1">
+        <Link
+          key={href}
+          href={href}
+          className="flex-1"
+          aria-current={pathname.startsWith(href) ? "page" : undefined}
+        >
           <div
             className={cn(
               "flex flex-col items-center gap-1 py-3 text-[11px] text-muted-foreground hover:text-foreground transition-colors",
@@ -45,7 +53,11 @@ export function MobileNav() {
           </div>
         </Link>
       ))}
-      <Link href={extraHref} className="flex-1">
+      <Link
+        href={extraHref}
+        className="flex-1"
+        aria-current={pathname.startsWith(extraHref) ? "page" : undefined}
+      >
         <div
           className={cn(
             "flex flex-col items-center gap-1 py-3 text-[11px] text-muted-foreground hover:text-foreground transition-colors",

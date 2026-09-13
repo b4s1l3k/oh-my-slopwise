@@ -53,16 +53,16 @@ export function toCalendarDateInputValue(date?: string | Date): string {
 }
 
 export function getInitials(name: string): string {
-  return name
+  const initials = name
     .split(" ")
-    .map((w) => w[0])
+    .map((word) => Array.from(word)[0])
     .join("")
     .toUpperCase()
-    .slice(0, 2)
+  return Array.from(initials).slice(0, 2).join("")
 }
 
 export function parseMoneyInput(value: string): number {
   const num = parseFloat(value.replace(",", "."))
-  if (isNaN(num) || num <= 0) return 0
+  if (!Number.isFinite(num) || num <= 0) return 0
   return Math.round(num * 100)
 }

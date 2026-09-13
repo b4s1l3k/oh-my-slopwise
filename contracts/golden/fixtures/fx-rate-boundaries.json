@@ -1,0 +1,102 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "fx-rate-boundaries",
+  "description": "Identity, direct, cross-rate and dated-quote selection boundaries.",
+  "cases": [
+    {
+      "id": "fx.identity-needs-no-table",
+      "description": "Same-currency conversion is exact and does not require rate data.",
+      "operation": "fx.convertBetween",
+      "input": { "amount": 2147483647, "from": "USD", "to": "USD" },
+      "expected": { "ok": true, "value": { "converted": 2147483647 } }
+    },
+    {
+      "id": "fx.rub-to-usd",
+      "description": "RUB converts through the quote denominator.",
+      "operation": "fx.convertBetween",
+      "input": { "amount": 9000, "from": "RUB", "to": "USD", "rates": { "USD": 90 } },
+      "expected": { "ok": true, "value": { "converted": 100 } }
+    },
+    {
+      "id": "fx.usd-to-rub",
+      "description": "A quoted currency converts to RUB through its numerator.",
+      "operation": "fx.convertBetween",
+      "input": { "amount": 100, "from": "USD", "to": "RUB", "rates": { "USD": 90 } },
+      "expected": { "ok": true, "value": { "converted": 9000 } }
+    },
+    {
+      "id": "fx.cross-rate-rounds-down",
+      "description": "A cross-rate result below the half-minor threshold rounds down.",
+      "operation": "fx.convertBetween",
+      "input": { "amount": 10, "from": "USD", "to": "EUR", "rates": { "USD": 90, "EUR": 100 } },
+      "expected": { "ok": true, "value": { "converted": 9 } }
+    },
+    {
+      "id": "fx.cross-half-even",
+      "description": "An exact .5 cross-rate result uses HALF_EVEN in the target implementation.",
+      "operation": "fx.convertBetween",
+      "input": { "amount": 5, "from": "USD", "to": "EUR", "rates": { "USD": 1, "EUR": 2 } },
+      "expected": { "ok": true, "value": { "converted": 2 } },
+      "expectedByAdapter": { "legacy": { "ok": true, "value": { "converted": 3 } } }
+    },
+    {
+      "id": "fx.nearest-exact-date",
+      "description": "A quote on the requested business date wins.",
+      "operation": "fx.selectNearestRate",
+      "input": { "requestedDate": "2026-06-15", "rates": [{ "date": "2026-06-14", "rate": 90 }, { "date": "2026-06-15", "rate": 91 }, { "date": "2026-06-16", "rate": 92 }] },
+      "expected": { "ok": true, "value": { "rate": 91 } }
+    },
+    {
+      "id": "fx.nearest-only-past",
+      "description": "The newest available past quote is selected when no future quote exists.",
+      "operation": "fx.selectNearestRate",
+      "input": { "requestedDate": "2026-06-15", "rates": [{ "date": "2026-06-01", "rate": 80 }, { "date": "2026-06-14", "rate": 90 }] },
+      "expected": { "ok": true, "value": { "rate": 90 } }
+    },
+    {
+      "id": "fx.nearest-unsorted-past",
+      "description": "Quote input order does not affect newest-past selection.",
+      "operation": "fx.selectNearestRate",
+      "input": { "requestedDate": "2026-06-15", "rates": [{ "date": "2026-06-14", "rate": 90 }, { "date": "2026-06-01", "rate": 80 }, { "date": "2026-06-10", "rate": 85 }] },
+      "expected": { "ok": true, "value": { "rate": 90 } }
+    },
+    {
+      "id": "fx.cutoff-fourteen-days",
+      "description": "A quote exactly fourteen calendar days old is still valid.",
+      "operation": "fx.selectNearestRate",
+      "input": { "requestedDate": "2026-06-15", "rates": [{ "date": "2026-06-01", "rate": 80 }] },
+      "expected": { "ok": true, "value": { "rate": 80 } }
+    },
+    {
+      "id": "fx.cutoff-fifteen-days",
+      "description": "The target rejects a quote older than the fourteen-day cutoff.",
+      "operation": "fx.selectNearestRate",
+      "input": { "requestedDate": "2026-06-16", "rates": [{ "date": "2026-06-01", "rate": 80 }] },
+      "expected": { "ok": false, "error": { "code": "RATE_UNAVAILABLE" } },
+      "expectedByAdapter": { "legacy": { "ok": true, "value": { "rate": 80 } } }
+    },
+    {
+      "id": "fx.future-only-is-rejected",
+      "description": "The target never applies a quote whose effective date follows the business date.",
+      "operation": "fx.selectNearestRate",
+      "input": { "requestedDate": "2026-06-15", "rates": [{ "date": "2026-06-16", "rate": 92 }] },
+      "expected": { "ok": false, "error": { "code": "RATE_UNAVAILABLE" } },
+      "expectedByAdapter": { "legacy": { "ok": true, "value": { "rate": 92 } } }
+    },
+    {
+      "id": "fx.empty-rate-set",
+      "description": "No rate candidates produces the stable unavailable code.",
+      "operation": "fx.selectNearestRate",
+      "input": { "requestedDate": "2026-06-15", "rates": [] },
+      "expected": { "ok": false, "error": { "code": "RATE_UNAVAILABLE" } }
+    },
+    {
+      "id": "fx.leap-day-selection",
+      "description": "Dated quote selection handles leap-day ordering as calendar days.",
+      "operation": "fx.selectNearestRate",
+      "input": { "requestedDate": "2024-02-29", "rates": [{ "date": "2024-02-28", "rate": 90 }, { "date": "2024-02-29", "rate": 91 }] },
+      "expected": { "ok": true, "value": { "rate": 91 } }
+    }
+  ]
+}

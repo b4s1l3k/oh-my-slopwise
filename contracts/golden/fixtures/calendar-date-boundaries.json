@@ -1,0 +1,155 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "calendar-date-boundaries",
+  "description": "Calendar validity, leap-year rules, strict syntax and timezone-independent DST dates.",
+  "cases": [
+    {
+      "id": "date.unix-epoch",
+      "description": "The Unix epoch business date remains the literal UTC day.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "1970-01-01" },
+      "expected": { "ok": true, "value": { "iso": "1970-01-01T00:00:00.000Z" } }
+    },
+    {
+      "id": "date.century-1900-not-leap",
+      "description": "A century year not divisible by 400 is not a leap year.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "1900-02-29" },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    },
+    {
+      "id": "date.century-2000-leap",
+      "description": "A century year divisible by 400 accepts February 29.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2000-02-29" },
+      "expected": { "ok": true, "value": { "iso": "2000-02-29T00:00:00.000Z" } }
+    },
+    {
+      "id": "date.april-thirtieth",
+      "description": "The final valid day of a thirty-day month is accepted.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-04-30" },
+      "expected": { "ok": true, "value": { "iso": "2026-04-30T00:00:00.000Z" } }
+    },
+    {
+      "id": "date.april-thirty-first-rejected",
+      "description": "April 31 is rejected rather than normalized into May.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-04-31" },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    },
+    {
+      "id": "date.month-zero-rejected",
+      "description": "Month zero is invalid.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-00-01" },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    },
+    {
+      "id": "date.month-thirteen-rejected",
+      "description": "Month thirteen is invalid.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-13-01" },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    },
+    {
+      "id": "date.day-zero-rejected",
+      "description": "Day zero is invalid.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-01-00" },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    },
+    {
+      "id": "date.dst-spring-moscow",
+      "description": "A historical Moscow DST transition does not move a date-only value.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2010-03-28" },
+      "expected": { "ok": true, "value": { "iso": "2010-03-28T00:00:00.000Z" } }
+    },
+    {
+      "id": "date.dst-fall-new-york",
+      "description": "A New York fall-back date is represented independently of local offsets.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-11-01" },
+      "expected": { "ok": true, "value": { "iso": "2026-11-01T00:00:00.000Z" } }
+    },
+    {
+      "id": "date.short-month-rejected",
+      "description": "Month and day components require two digits.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-1-01" },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    },
+    {
+      "id": "date.leading-space-rejected",
+      "description": "Date-only values are not implicitly trimmed.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": " 2026-01-01" },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    },
+    {
+      "id": "date.trailing-space-rejected",
+      "description": "Trailing whitespace is rejected at the boundary.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-01-01 " },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    },
+    {
+      "id": "date.offset-timestamp-rejected",
+      "description": "An RFC 3339 value with an offset cannot masquerade as a business date.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-01-01T23:30:00-08:00" },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    },
+    {
+      "id": "date.maximum-four-digit-year",
+      "description": "The largest four-digit calendar year is represented exactly.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "9999-12-31" },
+      "expected": { "ok": true, "value": { "iso": "9999-12-31T00:00:00.000Z" } }
+    },
+    {
+      "id": "date.zone-east-of-utc-next-day",
+      "description": "Group-local today can already be the next calendar day east of UTC.",
+      "operation": "date.evaluateBusinessDate",
+      "input": { "value": "2026-01-02", "now": "2026-01-01T12:30:00.000Z", "zoneId": "Pacific/Kiritimati" },
+      "expected": { "ok": true, "value": { "date": "2026-01-02", "today": "2026-01-02", "future": false } }
+    },
+    {
+      "id": "date.zone-west-of-utc-previous-day",
+      "description": "Group-local today can remain the previous calendar day west of UTC.",
+      "operation": "date.evaluateBusinessDate",
+      "input": { "value": "2025-12-31", "now": "2026-01-01T05:00:00.000Z", "zoneId": "America/Los_Angeles" },
+      "expected": { "ok": true, "value": { "date": "2025-12-31", "today": "2025-12-31", "future": false } }
+    },
+    {
+      "id": "date.group-local-future-rejected-marker",
+      "description": "A UTC date can still be in the future for the group's western zone.",
+      "operation": "date.evaluateBusinessDate",
+      "input": { "value": "2026-01-01", "now": "2026-01-01T05:00:00.000Z", "zoneId": "America/Los_Angeles" },
+      "expected": { "ok": true, "value": { "date": "2026-01-01", "today": "2025-12-31", "future": true } }
+    },
+    {
+      "id": "date.dst-spring-before-jump",
+      "description": "New York local today is stable immediately before the spring DST jump.",
+      "operation": "date.evaluateBusinessDate",
+      "input": { "value": "2026-03-08", "now": "2026-03-08T06:59:59.000Z", "zoneId": "America/New_York" },
+      "expected": { "ok": true, "value": { "date": "2026-03-08", "today": "2026-03-08", "future": false } }
+    },
+    {
+      "id": "date.dst-spring-after-jump",
+      "description": "New York local today remains the same date immediately after the skipped hour.",
+      "operation": "date.evaluateBusinessDate",
+      "input": { "value": "2026-03-08", "now": "2026-03-08T07:00:00.000Z", "zoneId": "America/New_York" },
+      "expected": { "ok": true, "value": { "date": "2026-03-08", "today": "2026-03-08", "future": false } }
+    },
+    {
+      "id": "date.invalid-zone-id",
+      "description": "Unknown IANA group zones are rejected explicitly.",
+      "operation": "date.evaluateBusinessDate",
+      "input": { "value": "2026-01-01", "now": "2026-01-01T00:00:00.000Z", "zoneId": "Mars/Olympus" },
+      "expected": { "ok": false, "error": { "code": "INVALID_ZONE_ID" } }
+    }
+  ]
+}

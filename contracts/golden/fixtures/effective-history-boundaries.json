@@ -1,0 +1,85 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "effective-history-boundaries",
+  "description": "Latest-revision, void, archive, lifetime money and irreversible achievement semantics.",
+  "cases": [
+    {
+      "id": "history.expense-correction-replaces-amount",
+      "description": "Only the latest effective expense revision contributes to current and all-time totals.",
+      "operation": "statistics.reduceEffectiveHistory",
+      "input": { "userId": "alice", "expenses": [{ "groupActive": true, "revisions": [{ "version": 1, "status": "EFFECTIVE", "currency": "RUB", "paidById": "alice", "amount": 100, "shares": { "alice": 50 } }, { "version": 2, "status": "EFFECTIVE", "currency": "RUB", "paidById": "alice", "amount": 80, "shares": { "alice": 40 } }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "current": { "advancedByPayer": [{ "currency": "RUB", "amount": 80 }], "attributedShare": [{ "currency": "RUB", "amount": 40 }], "settledSent": [], "settledReceived": [] }, "allTimeEffective": { "advancedByPayer": [{ "currency": "RUB", "amount": 80 }], "attributedShare": [{ "currency": "RUB", "amount": 40 }], "settledSent": [], "settledReceived": [] } } }
+    },
+    {
+      "id": "history.expense-revision-order-independent",
+      "description": "Revision array order does not affect selection of the highest version.",
+      "operation": "statistics.reduceEffectiveHistory",
+      "input": { "userId": "alice", "expenses": [{ "groupActive": true, "revisions": [{ "version": 3, "status": "EFFECTIVE", "currency": "USD", "paidById": "bob", "amount": 90, "shares": { "alice": 30 } }, { "version": 1, "status": "EFFECTIVE", "currency": "USD", "paidById": "alice", "amount": 100, "shares": { "alice": 50 } }, { "version": 2, "status": "EFFECTIVE", "currency": "USD", "paidById": "alice", "amount": 80, "shares": { "alice": 40 } }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "current": { "advancedByPayer": [], "attributedShare": [{ "currency": "USD", "amount": 30 }], "settledSent": [], "settledReceived": [] }, "allTimeEffective": { "advancedByPayer": [], "attributedShare": [{ "currency": "USD", "amount": 30 }], "settledSent": [], "settledReceived": [] } } }
+    },
+    {
+      "id": "history.voided-expense-excluded",
+      "description": "A latest VOID revision excludes the complete expense aggregate rather than exposing an earlier revision.",
+      "operation": "statistics.reduceEffectiveHistory",
+      "input": { "userId": "alice", "expenses": [{ "groupActive": true, "revisions": [{ "version": 1, "status": "EFFECTIVE", "currency": "RUB", "paidById": "alice", "amount": 100, "shares": { "alice": 50 } }, { "version": 2, "status": "VOID", "currency": "RUB", "paidById": "alice", "amount": 100, "shares": { "alice": 50 } }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "current": { "advancedByPayer": [], "attributedShare": [], "settledSent": [], "settledReceived": [] }, "allTimeEffective": { "advancedByPayer": [], "attributedShare": [], "settledSent": [], "settledReceived": [] } } }
+    },
+    {
+      "id": "history.archived-group-only-all-time",
+      "description": "Archived group money is absent from current totals but retained in all-time effective totals.",
+      "operation": "statistics.reduceEffectiveHistory",
+      "input": { "userId": "alice", "expenses": [{ "groupActive": false, "revisions": [{ "version": 1, "status": "EFFECTIVE", "currency": "EUR", "paidById": "alice", "amount": 100, "shares": { "alice": 25 } }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "current": { "advancedByPayer": [], "attributedShare": [], "settledSent": [], "settledReceived": [] }, "allTimeEffective": { "advancedByPayer": [{ "currency": "EUR", "amount": 100 }], "attributedShare": [{ "currency": "EUR", "amount": 25 }], "settledSent": [], "settledReceived": [] } } }
+    },
+    {
+      "id": "history.settlement-directions-and-void",
+      "description": "Sent and received settlement metrics use latest non-void aggregate directions independently.",
+      "operation": "statistics.reduceEffectiveHistory",
+      "input": { "userId": "alice", "expenses": [], "settlements": [{ "groupActive": true, "revisions": [{ "version": 1, "status": "EFFECTIVE", "currency": "RUB", "fromUserId": "alice", "toUserId": "bob", "amount": 10 }] }, { "groupActive": true, "revisions": [{ "version": 1, "status": "EFFECTIVE", "currency": "RUB", "fromUserId": "bob", "toUserId": "alice", "amount": 20 }] }, { "groupActive": true, "revisions": [{ "version": 1, "status": "EFFECTIVE", "currency": "RUB", "fromUserId": "alice", "toUserId": "bob", "amount": 30 }, { "version": 2, "status": "VOID", "currency": "RUB", "fromUserId": "alice", "toUserId": "bob", "amount": 30 }] }] },
+      "expected": { "ok": true, "value": { "current": { "advancedByPayer": [], "attributedShare": [], "settledSent": [{ "currency": "RUB", "amount": 10 }], "settledReceived": [{ "currency": "RUB", "amount": 20 }] }, "allTimeEffective": { "advancedByPayer": [], "attributedShare": [], "settledSent": [{ "currency": "RUB", "amount": 10 }], "settledReceived": [{ "currency": "RUB", "amount": 20 }] } } }
+    },
+    {
+      "id": "history.currency-buckets-sorted",
+      "description": "Money is never combined across currencies and buckets have deterministic code order.",
+      "operation": "statistics.reduceEffectiveHistory",
+      "input": { "userId": "alice", "expenses": [{ "groupActive": true, "revisions": [{ "version": 1, "status": "EFFECTIVE", "currency": "USD", "paidById": "alice", "amount": 10, "shares": { "alice": 5 } }] }, { "groupActive": true, "revisions": [{ "version": 1, "status": "EFFECTIVE", "currency": "EUR", "paidById": "alice", "amount": 20, "shares": { "alice": 7 } }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "current": { "advancedByPayer": [{ "currency": "EUR", "amount": 20 }, { "currency": "USD", "amount": 10 }], "attributedShare": [{ "currency": "EUR", "amount": 7 }, { "currency": "USD", "amount": 5 }], "settledSent": [], "settledReceived": [] }, "allTimeEffective": { "advancedByPayer": [{ "currency": "EUR", "amount": 20 }, { "currency": "USD", "amount": 10 }], "attributedShare": [{ "currency": "EUR", "amount": 7 }, { "currency": "USD", "amount": 5 }], "settledSent": [], "settledReceived": [] } } }
+    },
+    {
+      "id": "achievement.just-below-threshold",
+      "description": "A visible achievement one step below its threshold remains locked with rounded progress.",
+      "operation": "achievements.evaluate",
+      "input": { "metrics": { "expensesCreated": 9 }, "persistedIds": [], "ids": ["expenses-10"] },
+      "expected": { "ok": true, "value": [{ "id": "expenses-10", "title": "Счёт ведётся", "description": "Добавить 10 трат", "category": "ACTIVITY", "icon": "notebook", "unlocked": false, "progress": 9, "target": 10, "percent": 90, "hidden": false }] }
+    },
+    {
+      "id": "achievement.exact-threshold",
+      "description": "A metric exactly equal to its target unlocks the achievement.",
+      "operation": "achievements.evaluate",
+      "input": { "metrics": { "expensesCreated": 10 }, "persistedIds": [], "ids": ["expenses-10"] },
+      "expected": { "ok": true, "value": [{ "id": "expenses-10", "title": "Счёт ведётся", "description": "Добавить 10 трат", "category": "ACTIVITY", "icon": "notebook", "unlocked": true, "progress": 10, "target": 10, "percent": 100, "hidden": false }] }
+    },
+    {
+      "id": "achievement.persisted-unlock-is-irreversible",
+      "description": "A persisted visible unlock remains unlocked after its current metric falls to zero.",
+      "operation": "achievements.evaluate",
+      "input": { "metrics": { "expensesCreated": 0 }, "persistedIds": ["expenses-10"], "ids": ["expenses-10"] },
+      "expected": { "ok": true, "value": [{ "id": "expenses-10", "title": "Счёт ведётся", "description": "Добавить 10 трат", "category": "ACTIVITY", "icon": "notebook", "unlocked": true, "progress": 0, "target": 10, "percent": 0, "hidden": false }] }
+    },
+    {
+      "id": "achievement.negative-progress-clamped",
+      "description": "Corrupted negative source metrics cannot produce negative public progress.",
+      "operation": "achievements.evaluate",
+      "input": { "metrics": { "expensesCreated": -1 }, "persistedIds": [], "ids": ["first-expense"] },
+      "expected": { "ok": true, "value": [{ "id": "first-expense", "title": "Первый чек", "description": "Добавить первую трату", "category": "START", "icon": "receipt", "unlocked": false, "progress": 0, "target": 1, "percent": 0, "hidden": false }] }
+    },
+    {
+      "id": "achievement.rounded-percent-does-not-unlock",
+      "description": "A rounded display percent of 100 does not unlock before the exact threshold.",
+      "operation": "achievements.evaluate",
+      "input": { "metrics": { "accountAgeDays": 364 }, "persistedIds": [], "ids": ["account-year"] },
+      "expected": { "ok": true, "value": [{ "id": "account-year", "title": "Годовщина", "description": "Пользоваться приложением целый год", "category": "ACTIVITY", "icon": "calendar", "unlocked": false, "progress": 364, "target": 365, "percent": 100, "hidden": false }] }
+    }
+  ]
+}

@@ -74,6 +74,14 @@ describe("authorize (Credentials provider)", () => {
     expect(bcryptCompare).not.toHaveBeenCalled()
   })
 
+  it("нормализует email перед поиском пользователя", async () => {
+    findUnique.mockResolvedValue(null)
+
+    await capturedAuthorize({ email: "  USER@EXAMPLE.COM  ", password: "secret" })
+
+    expect(findUnique).toHaveBeenCalledWith({ where: { email: "user@example.com" } })
+  })
+
   it("возвращает null при неверном пароле", async () => {
     findUnique.mockResolvedValue({
       id: "u1",

@@ -1,0 +1,199 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "expense-splits-fx",
+  "description": "Expense split, conversion, rounding and cached-rate compatibility.",
+  "cases": [
+    {
+      "id": "expense.command-valid-exact",
+      "description": "A well-formed exact-split command is accepted at the shared boundary.",
+      "operation": "expense.validateCommand",
+      "input": {
+        "title": "Dinner",
+        "amount": 1000,
+        "currency": "USD",
+        "customRate": 90,
+        "date": "2026-06-01",
+        "paidById": "alice",
+        "splitType": "EXACT",
+        "splits": [
+          { "userId": "alice", "amount": 400 },
+          { "userId": "bob", "amount": 600 }
+        ]
+      },
+      "expected": { "ok": true, "value": { "accepted": true, "fields": [] } }
+    },
+    {
+      "id": "expense.command-rejects-invalid-split-and-date",
+      "description": "Boundary validation rejects duplicate participants, a mismatched exact total and an impossible date.",
+      "operation": "expense.validateCommand",
+      "input": {
+        "title": "Dinner",
+        "amount": 1000,
+        "currency": "USD",
+        "date": "2026-02-29",
+        "paidById": "alice",
+        "splitType": "EXACT",
+        "splits": [
+          { "userId": "bob", "amount": 400 },
+          { "userId": "bob", "amount": 400 }
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "value": { "accepted": false, "fields": ["date", "splits"] }
+      }
+    },
+    {
+      "id": "expense.equal-remainder-first",
+      "description": "Equal split gives the indivisible remainder to the first participant.",
+      "operation": "expense.calculateSplits",
+      "input": {
+        "totalAmount": 10001,
+        "splitType": "EQUAL",
+        "participants": [{ "userId": "alice" }, { "userId": "bob" }]
+      },
+      "expected": {
+        "ok": true,
+        "value": [
+          { "userId": "alice", "amount": 5001 },
+          { "userId": "bob", "amount": 5000 }
+        ]
+      }
+    },
+    {
+      "id": "expense.percentage-basis-points",
+      "description": "Percentage splits use basis points and put their floor remainder on the first participant.",
+      "operation": "expense.calculateSplits",
+      "input": {
+        "totalAmount": 100001,
+        "splitType": "PERCENTAGE",
+        "participants": [
+          { "userId": "alice", "percentage": 3333 },
+          { "userId": "bob", "percentage": 3333 },
+          { "userId": "carol", "percentage": 3334 }
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "value": [
+          { "userId": "alice", "amount": 33331 },
+          { "userId": "bob", "amount": 33330 },
+          { "userId": "carol", "amount": 33340 }
+        ]
+      }
+    },
+    {
+      "id": "expense.fx-largest-remainder",
+      "description": "Converted split rows use stable largest-remainder allocation and sum to the converted total.",
+      "operation": "expense.convertAndAllocate",
+      "input": {
+        "amount": 6,
+        "factor": 0.6,
+        "splitType": "EQUAL",
+        "participants": [{ "userId": "alice" }, { "userId": "bob" }, { "userId": "carol" }]
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "amount": 6,
+          "amountBase": 4,
+          "splits": [
+            { "userId": "alice", "amount": 2, "amountBase": 2 },
+            { "userId": "bob", "amount": 2, "amountBase": 1 },
+            { "userId": "carol", "amount": 2, "amountBase": 1 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "expense.fx-positive-split-too-small",
+      "description": "A positive source split that converts to zero rejects the whole expense.",
+      "operation": "expense.convertAndAllocate",
+      "input": {
+        "amount": 2,
+        "factor": 0.6,
+        "splitType": "EQUAL",
+        "participants": [{ "userId": "alice" }, { "userId": "bob" }]
+      },
+      "expected": { "ok": false, "error": { "code": "CONVERTED_AMOUNT_TOO_SMALL" } }
+    },
+    {
+      "id": "expense.fx-binary-float-half",
+      "description": "Target HALF_EVEN and legacy binary-float rounding differ at an odd 1.005 half-unit edge.",
+      "operation": "expense.convertAndAllocate",
+      "input": {
+        "amount": 300,
+        "factor": 1.005,
+        "splitType": "EQUAL",
+        "participants": [{ "userId": "alice" }]
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "amount": 300,
+          "amountBase": 302,
+          "splits": [{ "userId": "alice", "amount": 300, "amountBase": 302 }]
+        }
+      },
+      "expectedByAdapter": {
+        "legacy": {
+          "ok": true,
+          "value": {
+            "amount": 300,
+            "amountBase": 301,
+            "splits": [{ "userId": "alice", "amount": 300, "amountBase": 301 }]
+          }
+        }
+      }
+    },
+    {
+      "id": "fx.cross-through-rub",
+      "description": "Cross conversion divides the two RUB rates and rounds once.",
+      "operation": "fx.convertBetween",
+      "input": {
+        "amount": 10000,
+        "from": "USD",
+        "to": "EUR",
+        "rates": { "USD": 90, "EUR": 100 }
+      },
+      "expected": { "ok": true, "value": { "converted": 9000 } }
+    },
+    {
+      "id": "fx.identity-keeps-legacy-minor-units",
+      "description": "Same-currency conversion keeps the integer unchanged, including the v1 hundredths convention for JPY.",
+      "operation": "fx.convertBetween",
+      "input": { "amount": 12345, "from": "JPY", "to": "JPY", "rates": {} },
+      "expected": { "ok": true, "value": { "converted": 12345 } }
+    },
+    {
+      "id": "fx.nearest-tie-prefers-before",
+      "description": "Nearest cached fallback chooses the earlier rate when distances tie.",
+      "operation": "fx.selectNearestRate",
+      "input": {
+        "requestedDate": "2026-05-10",
+        "rates": [
+          { "date": "2026-05-08", "rate": 90 },
+          { "date": "2026-05-12", "rate": 92 }
+        ]
+      },
+      "expected": { "ok": true, "value": { "rate": 90 } }
+    },
+    {
+      "id": "fx.nearest-may-use-future",
+      "description": "V1 nearest fallback may select a cached rate after the requested business date.",
+      "operation": "fx.selectNearestRate",
+      "input": {
+        "requestedDate": "2026-05-10",
+        "rates": [
+          { "date": "2026-05-01", "rate": 88 },
+          { "date": "2026-05-11", "rate": 91 }
+        ]
+      },
+      "expected": { "ok": true, "value": { "rate": 88 } },
+      "expectedByAdapter": {
+        "legacy": { "ok": true, "value": { "rate": 91 } }
+      }
+    }
+  ]
+}

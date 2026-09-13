@@ -20,7 +20,7 @@ export function PublicHeader({ callbackUrl }: PublicHeaderProps) {
           </span>
           <span className="font-bold">SLOPwise</span>
         </Link>
-        <nav className="flex items-center gap-1">
+        <nav aria-label="Публичная навигация" className="flex items-center gap-1">
           <Button variant="ghost" asChild>
             <Link href="/faq">FAQ</Link>
           </Button>

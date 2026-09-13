@@ -1,18 +1,14 @@
 "use client"
 import { useState } from "react"
-import { useMutation } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2 } from "lucide-react"
 import { parseMoneyInput, formatMoney, toCalendarDateInputValue } from "@/lib/utils/format"
 import { useToast } from "@/components/ui/toast"
-
-type Requisites = {
-  payeeName: string | null
-  bankName: string | null
-  payeeAccount: string | null
-}
+import { getApiErrorMessage } from "@/lib/api/client/api-error"
+import { useCreateSettlement } from "@/hooks/api/use-settlements"
+import type { RequisitesViewModel } from "@/lib/api/view-models/models"
 
 type Props = {
   groupId: string
@@ -20,7 +16,7 @@ type Props = {
   toUserName: string
   suggestedAmount: number
   currency?: string
-  payeeRequisites?: Requisites
+  payeeRequisites?: RequisitesViewModel
   onSuccess: () => void
 }
 
@@ -38,38 +34,34 @@ export function SettlementForm({
   const [date, setDate] = useState(toCalendarDateInputValue())
   const [notes, setNotes] = useState("")
 
-  const { mutate, isPending } = useMutation({
-    mutationFn: async () => {
-      const amount = parseMoneyInput(amountStr)
-      if (!amount) throw new Error("Укажите сумму")
+  const settlement = useCreateSettlement()
 
-      const res = await fetch("/api/v1/settlements", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          groupId,
-          toUserId,
-          amount,
-          currency,
-          date,
-          notes: notes.trim() || undefined,
-        }),
-      })
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as
-          | { error?: string | { message?: string } }
-          | null
-        const msg =
-          typeof data?.error === "string"
-            ? data.error
-            : data?.error?.message ?? "Не удалось зафиксировать расчёт"
-        throw new Error(msg)
+  const submit = () => {
+    const amount = parseMoneyInput(amountStr)
+    if (!amount) {
+      toast({ title: "Укажите сумму", variant: "destructive" })
+      return
+    }
+
+    settlement.mutate(
+      {
+        groupId,
+        toUserId,
+        amount,
+        currency,
+        date,
+        notes: notes.trim() || undefined,
+      },
+      {
+        onSuccess,
+        onError: (error) =>
+          toast({
+            title: getApiErrorMessage(error, "Не удалось зафиксировать расчёт"),
+            variant: "destructive",
+          }),
       }
-      return res.json()
-    },
-    onSuccess: onSuccess,
-    onError: (e) => toast({ title: e instanceof Error ? e.message : "Ошибка", variant: "destructive" }),
-  })
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -97,8 +89,9 @@ export function SettlementForm({
         )}
 
       <div className="space-y-2">
-        <Label>Сумма</Label>
+        <Label htmlFor="settlement-amount">Сумма</Label>
         <Input
+          id="settlement-amount"
           type="number"
           value={amountStr}
           onChange={(e) => setAmountStr(e.target.value)}
@@ -107,21 +100,27 @@ export function SettlementForm({
       </div>
 
       <div className="space-y-2">
-        <Label>Дата</Label>
-        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <Label htmlFor="settlement-date">Дата</Label>
+        <Input
+          id="settlement-date"
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
       </div>
 
       <div className="space-y-2">
-        <Label>Заметка (необязательно)</Label>
+        <Label htmlFor="settlement-notes">Заметка (необязательно)</Label>
         <Input
+          id="settlement-notes"
           placeholder="Перевод через Тинькофф..."
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
       </div>
 
-      <Button className="w-full" onClick={() => mutate()} disabled={isPending}>
-        {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+      <Button className="w-full" onClick={submit} disabled={settlement.isPending}>
+        {settlement.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         Зафиксировать расчёт
       </Button>
     </div>

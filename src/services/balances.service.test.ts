@@ -15,7 +15,7 @@ const runDatabaseTests = process.env.RUN_DB_INTEGRATION_TESTS === "true"
 const describeDatabase = runDatabaseTests ? describe : describe.skip
 const testPrefix = `balances-service-${Date.now()}`
 
-const EXPENSE_DATE = "2026-06-01T12:00:00.000Z"
+const EXPENSE_DATE = "2026-06-01"
 // Fixed UTC-midnight date used for the pre-seeded FX rates (schema stores @db.Date).
 const FX_DATE = new Date("2026-06-01T00:00:00.000Z")
 
@@ -221,7 +221,7 @@ describeDatabase("balances service (DB-backed behavioral spec)", () => {
         title: "USD expense",
         amount: 300,
         currency: "USD",
-        date: FX_DATE.toISOString(),
+        date: EXPENSE_DATE,
         paidById: friend.id,
         splitType: "EQUAL",
         splits: [{ userId: me.id }],

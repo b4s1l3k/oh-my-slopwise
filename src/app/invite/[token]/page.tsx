@@ -1,36 +1,18 @@
 "use client"
 import { use, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useQuery, useMutation } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Loader2, Users, Split } from "lucide-react"
+import { useAcceptInvite, useInvite } from "@/hooks/api/use-invite"
 
 export default function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
   const router = useRouter()
   const [error, setError] = useState("")
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["invite", token],
-    queryFn: async () => {
-      const res = await fetch(`/api/v1/invites/${token}`)
-      if (!res.ok) throw new Error("Приглашение недействительно")
-      const json = await res.json()
-      return json.invite as { groupId: string; groupName: string; memberCount: number; isAlreadyMember: boolean }
-    },
-    retry: false,
-  })
-
-  const accept = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/v1/invites/${token}/accept`, { method: "POST" })
-      if (!res.ok) throw new Error("Не удалось вступить")
-      return (await res.json()) as { groupId: string }
-    },
-    onSuccess: (r) => router.push(`/groups/${r.groupId}`),
-    onError: (e) => setError(e instanceof Error ? e.message : "Ошибка"),
-  })
+  const { data, isLoading, isError } = useInvite(token)
+  const accept = useAcceptInvite(token)
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 px-4">
@@ -80,7 +62,10 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
               ) : (
                 <Button
                   className="w-full"
-                  onClick={() => accept.mutate()}
+                  onClick={() => accept.mutate(undefined, {
+                    onSuccess: (groupId) => router.push(`/groups/${groupId}`),
+                    onError: () => setError("Не удалось вступить"),
+                  })}
                   disabled={accept.isPending}
                 >
                   {accept.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

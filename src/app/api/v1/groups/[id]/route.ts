@@ -3,6 +3,10 @@ import { updateGroupSchema } from "@/lib/validations/group"
 import * as groupsService from "@/services/groups.service"
 import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
+import {
+  toGroupDetailResponse,
+  toGroupResponse,
+} from "@/lib/api/v1/response-mappers"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -13,7 +17,7 @@ export async function GET(_req: Request, { params }: Params) {
   const { id } = await params
   const group = await groupsService.getGroup(id, session.user.id)
   if (!group) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  return NextResponse.json({ group })
+  return NextResponse.json(toGroupDetailResponse(group))
 }
 
 export async function PATCH(req: Request, { params }: Params) {
@@ -29,7 +33,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
   try {
     const group = await groupsService.updateGroup(id, session.user.id, parsed.data)
-    return NextResponse.json({ group })
+    return NextResponse.json(toGroupResponse(group))
   } catch (e) {
     return handleServiceError(e)
   }

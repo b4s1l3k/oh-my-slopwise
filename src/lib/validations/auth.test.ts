@@ -21,3 +21,27 @@ describe("bcrypt password byte limit", () => {
     expect(registrationSchema.safeParse({ ...base, password: "я".repeat(37) }).success).toBe(false)
   })
 })
+
+describe("registration identity normalization", () => {
+  it("trims and lowercases email and trims name", () => {
+    const result = registrationSchema.safeParse({
+      email: "  User.Name@Example.COM  ",
+      name: "  User Name  ",
+      password: "password-123",
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.email).toBe("user.name@example.com")
+      expect(result.data.name).toBe("User Name")
+    }
+  })
+
+  it("rejects a whitespace-only name", () => {
+    expect(registrationSchema.safeParse({
+      email: "user@example.com",
+      name: "   ",
+      password: "password-123",
+    }).success).toBe(false)
+  })
+})

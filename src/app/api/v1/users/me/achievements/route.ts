@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { getUserAchievements } from "@/services/achievements.service"
 import { NextResponse } from "next/server"
+import { toAchievementCollectionResponse } from "@/lib/api/v1/response-mappers"
 
 export async function GET() {
   const session = await auth()
@@ -8,5 +9,6 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  return NextResponse.json(await getUserAchievements(session.user.id))
+  const achievements = await getUserAchievements(session.user.id)
+  return NextResponse.json(toAchievementCollectionResponse(achievements))
 }

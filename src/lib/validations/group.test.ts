@@ -32,6 +32,18 @@ describe("createGroupSchema", () => {
       }
     })
 
+    it("trims group text fields", () => {
+      const result = createGroupSchema.safeParse({
+        name: "  Apartment  ",
+        description: "  Shared flat expenses  ",
+      })
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.name).toBe("Apartment")
+        expect(result.data.description).toBe("Shared flat expenses")
+      }
+    })
+
     it("accepts an empty description string (optional, no min)", () => {
       const result = createGroupSchema.safeParse({ name: "X", description: "" })
       expect(result.success).toBe(true)
@@ -75,6 +87,10 @@ describe("createGroupSchema", () => {
         expect(result.error.issues[0].path).toEqual(["name"])
         expect(result.error.issues[0].message).toBe("Название обязательно")
       }
+    })
+
+    it("rejects a whitespace-only name", () => {
+      expect(createGroupSchema.safeParse({ name: "   " }).success).toBe(false)
     })
 
     it("rejects a non-string name", () => {
@@ -151,6 +167,10 @@ describe("createGroupSchema", () => {
       expect(createGroupSchema.safeParse({ name: "X", memberIds: ["a", 1] }).success).toBe(false)
     })
 
+    it("rejects an empty member ID", () => {
+      expect(createGroupSchema.safeParse({ name: "X", memberIds: [""] }).success).toBe(false)
+    })
+
     it("rejects a non-array memberIds", () => {
       expect(createGroupSchema.safeParse({ name: "X", memberIds: "a" }).success).toBe(false)
     })
@@ -191,6 +211,14 @@ describe("updateGroupSchema", () => {
         expect(result.data).toEqual(input)
       }
     })
+
+    it("trims group text fields", () => {
+      const result = updateGroupSchema.safeParse({ name: "  New  ", description: "  d  " })
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data).toEqual({ name: "New", description: "d" })
+      }
+    })
   })
 
   describe("name boundaries (when provided)", () => {
@@ -200,6 +228,10 @@ describe("updateGroupSchema", () => {
       if (!result.success) {
         expect(result.error.issues[0].message).toBe("Название обязательно")
       }
+    })
+
+    it("rejects a whitespace-only name", () => {
+      expect(updateGroupSchema.safeParse({ name: "   " }).success).toBe(false)
     })
 
     it("accepts a 100-char name (max)", () => {

@@ -1,0 +1,163 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "balances-settlements",
+  "description": "Raw positions, greedy debts and settlement command guards.",
+  "cases": [
+    {
+      "id": "settlement.command-rejects-non-positive-amount",
+      "description": "Transport validation rejects a zero settlement before the service boundary.",
+      "operation": "settlement.validateCommand",
+      "input": {
+        "groupId": "group-1",
+        "toUserId": "alice",
+        "amount": 0,
+        "currency": "RUB",
+        "date": "2026-06-01"
+      },
+      "expected": { "ok": true, "value": { "accepted": false, "fields": ["amount"] } }
+    },
+    {
+      "id": "balance.expenses-and-settlement",
+      "description": "Expenses and a partial settlement produce stable raw positions and greedy edges.",
+      "operation": "balance.calculate",
+      "input": {
+        "userNames": { "alice": "Alice", "bob": "Bob", "carol": "Carol" },
+        "expenses": [
+          {
+            "paidById": "alice",
+            "splits": [
+              { "userId": "alice", "amount": 400 },
+              { "userId": "bob", "amount": 400 },
+              { "userId": "carol", "amount": 400 }
+            ]
+          },
+          { "paidById": "bob", "splits": [{ "userId": "carol", "amount": 300 }] }
+        ],
+        "settlements": [{ "fromUserId": "carol", "toUserId": "alice", "amount": 200 }]
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "simplified": [
+            {
+              "fromUserId": "carol",
+              "fromUserName": "Carol",
+              "toUserId": "alice",
+              "toUserName": "Alice",
+              "amount": 500
+            },
+            {
+              "fromUserId": "bob",
+              "fromUserName": "Bob",
+              "toUserId": "alice",
+              "toUserName": "Alice",
+              "amount": 100
+            }
+          ],
+          "raw": [
+            { "userId": "alice", "userName": "Alice", "balance": 600 },
+            { "userId": "bob", "userName": "Bob", "balance": -100 },
+            { "userId": "carol", "userName": "Carol", "balance": -500 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "balance.exact-settlement-zeroes-positions",
+      "description": "An exact repayment leaves zero raw positions and no simplified edge.",
+      "operation": "balance.calculate",
+      "input": {
+        "userNames": { "alice": "Alice", "bob": "Bob" },
+        "expenses": [
+          { "paidById": "alice", "splits": [{ "userId": "bob", "amount": 1000 }] }
+        ],
+        "settlements": [{ "fromUserId": "bob", "toUserId": "alice", "amount": 1000 }]
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "simplified": [],
+          "raw": [
+            { "userId": "alice", "userName": "Alice", "balance": 0 },
+            { "userId": "bob", "userName": "Bob", "balance": 0 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "settlement.partial-uses-group-currency",
+      "description": "A manual settlement stores the group currency and ignores the legacy request currency field.",
+      "operation": "settlement.apply",
+      "input": {
+        "actorId": "bob",
+        "toUserId": "alice",
+        "activeMemberIds": ["alice", "bob"],
+        "outstanding": 500,
+        "amount": 200,
+        "groupCurrency": "RUB",
+        "requestedCurrency": "USD",
+        "date": "2026-06-01"
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "settlement": {
+            "fromUserId": "bob",
+            "toUserId": "alice",
+            "amount": 200,
+            "amountBase": 200,
+            "currency": "RUB",
+            "date": "2026-06-01T00:00:00.000Z"
+          },
+          "remaining": 300
+        }
+      }
+    },
+    {
+      "id": "settlement.self-rejected",
+      "description": "A user cannot settle with themselves.",
+      "operation": "settlement.apply",
+      "input": {
+        "actorId": "alice",
+        "toUserId": "alice",
+        "activeMemberIds": ["alice"],
+        "outstanding": 100,
+        "amount": 100,
+        "groupCurrency": "RUB",
+        "date": "2026-06-01"
+      },
+      "expected": { "ok": false, "error": { "code": "SELF_SETTLEMENT" } }
+    },
+    {
+      "id": "settlement.inactive-recipient-rejected",
+      "description": "The settlement recipient must be an active member.",
+      "operation": "settlement.apply",
+      "input": {
+        "actorId": "bob",
+        "toUserId": "alice",
+        "activeMemberIds": ["bob"],
+        "outstanding": 100,
+        "amount": 100,
+        "groupCurrency": "RUB",
+        "date": "2026-06-01"
+      },
+      "expected": { "ok": false, "error": { "code": "RECIPIENT_NOT_MEMBER" } }
+    },
+    {
+      "id": "settlement.amount-above-debt-rejected",
+      "description": "A settlement cannot exceed the current simplified debt edge.",
+      "operation": "settlement.apply",
+      "input": {
+        "actorId": "bob",
+        "toUserId": "alice",
+        "activeMemberIds": ["alice", "bob"],
+        "outstanding": 500,
+        "amount": 501,
+        "groupCurrency": "RUB",
+        "date": "2026-06-01"
+      },
+      "expected": { "ok": false, "error": { "code": "AMOUNT_EXCEEDS_DEBT" } }
+    }
+  ]
+}

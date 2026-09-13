@@ -1,0 +1,95 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "membership-dates",
+  "description": "Membership leave decisions and timezone-neutral business dates.",
+  "cases": [
+    {
+      "id": "membership.member-leaves-at-zero",
+      "description": "A regular member may leave themselves when their raw position is zero.",
+      "operation": "membership.leave",
+      "input": {
+        "actor": { "id": "bob", "active": true, "role": "MEMBER" },
+        "target": { "id": "bob", "active": true, "role": "MEMBER" },
+        "targetBalance": 0
+      },
+      "expected": { "ok": true, "value": { "userId": "bob", "isActive": false } }
+    },
+    {
+      "id": "membership.admin-removes-member-at-zero",
+      "description": "An active group administrator may remove another zero-balance member.",
+      "operation": "membership.leave",
+      "input": {
+        "actor": { "id": "alice", "active": true, "role": "ADMIN" },
+        "target": { "id": "bob", "active": true, "role": "MEMBER" },
+        "targetBalance": 0
+      },
+      "expected": { "ok": true, "value": { "userId": "bob", "isActive": false } }
+    },
+    {
+      "id": "membership.non-admin-cannot-remove-other",
+      "description": "A regular member cannot remove another participant.",
+      "operation": "membership.leave",
+      "input": {
+        "actor": { "id": "carol", "active": true, "role": "MEMBER" },
+        "target": { "id": "bob", "active": true, "role": "MEMBER" },
+        "targetBalance": 0
+      },
+      "expected": { "ok": false, "error": { "code": "FORBIDDEN" } }
+    },
+    {
+      "id": "membership.admin-cannot-leave",
+      "description": "The group administrator cannot leave themselves.",
+      "operation": "membership.leave",
+      "input": {
+        "actor": { "id": "alice", "active": true, "role": "ADMIN" },
+        "target": { "id": "alice", "active": true, "role": "ADMIN" },
+        "targetBalance": 0
+      },
+      "expected": { "ok": false, "error": { "code": "ADMIN_CANNOT_LEAVE" } }
+    },
+    {
+      "id": "membership.balance-blocks-leave",
+      "description": "Any non-zero raw balance blocks member removal.",
+      "operation": "membership.leave",
+      "input": {
+        "actor": { "id": "alice", "active": true, "role": "ADMIN" },
+        "target": { "id": "bob", "active": true, "role": "MEMBER" },
+        "targetBalance": -1
+      },
+      "expected": { "ok": false, "error": { "code": "MEMBER_HAS_BALANCE" } }
+    },
+    {
+      "id": "membership.inactive-target-is-not-found",
+      "description": "Removing an already inactive membership returns NOT_FOUND.",
+      "operation": "membership.leave",
+      "input": {
+        "actor": { "id": "alice", "active": true, "role": "ADMIN" },
+        "target": { "id": "bob", "active": false, "role": "MEMBER" },
+        "targetBalance": 0
+      },
+      "expected": { "ok": false, "error": { "code": "NOT_FOUND" } }
+    },
+    {
+      "id": "dates.leap-day",
+      "description": "A valid leap day is represented as the same literal day at UTC midnight.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2024-02-29" },
+      "expected": { "ok": true, "value": { "iso": "2024-02-29T00:00:00.000Z" } }
+    },
+    {
+      "id": "dates.non-leap-day-rejected",
+      "description": "An impossible calendar day is rejected rather than normalized into March.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-02-29" },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    },
+    {
+      "id": "dates.datetime-rejected",
+      "description": "The command boundary accepts strict YYYY-MM-DD, not a timestamp.",
+      "operation": "date.parseCalendarDate",
+      "input": { "value": "2026-06-01T00:00:00.000Z" },
+      "expected": { "ok": false, "error": { "code": "INVALID_CALENDAR_DATE" } }
+    }
+  ]
+}

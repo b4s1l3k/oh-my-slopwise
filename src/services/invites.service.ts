@@ -4,6 +4,7 @@ import {
   recordGroupMemberJoined,
   recordInviteHistory,
 } from "@/services/statistics-history.service"
+import { runSerializableTransaction } from "@/lib/serializable-transaction"
 
 async function assertMember(groupId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
@@ -22,7 +23,7 @@ async function assertAdmin(groupId: string, userId: string) {
 // Возвращает активную ссылку группы (создаёт, если нет) — доступно всем участникам
 export async function getOrCreateInvite(groupId: string, userId: string) {
   await assertMember(groupId, userId)
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     const member = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     })
@@ -44,7 +45,7 @@ export async function getOrCreateInvite(groupId: string, userId: string) {
 // Отзывает активную ссылку (старая перестаёт работать)
 export async function revokeInvite(groupId: string, userId: string) {
   await assertAdmin(groupId, userId)
-  await prisma.$transaction(async (tx) => {
+  await runSerializableTransaction(async (tx) => {
     const member = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     })
@@ -81,7 +82,7 @@ export async function getInviteInfo(token: string, userId: string) {
 
 // Вступление в группу по токену
 export async function acceptInvite(token: string, userId: string) {
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     const invite = await tx.groupInvite.findUnique({ where: { token } })
     if (!invite || invite.revoked) throw new Error("INVITE_INVALID")
 

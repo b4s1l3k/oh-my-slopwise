@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import * as balancesService from "@/services/balances.service"
 import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
+import { toGroupBalancesResponse } from "@/lib/api/v1/response-mappers"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -12,7 +13,7 @@ export async function GET(_req: Request, { params }: Params) {
   const { id: groupId } = await params
   try {
     const balances = await balancesService.getGroupBalances(groupId, session.user.id)
-    return NextResponse.json({ balances })
+    return NextResponse.json(toGroupBalancesResponse(balances))
   } catch (e) {
     return handleServiceError(e)
   }

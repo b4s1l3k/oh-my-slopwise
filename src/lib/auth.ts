@@ -14,7 +14,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email = credentials?.email
+        const email = typeof credentials?.email === "string"
+          ? credentials.email.trim().toLowerCase()
+          : credentials?.email
         const password = credentials?.password
         if (
           typeof email !== "string" ||
@@ -37,7 +39,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         )
         if (!valid) return null
 
-        const role = user.email === process.env.ADMIN_EMAIL ? "ADMIN" : "USER"
+        const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase()
+        const role = user.email.toLowerCase() === adminEmail ? "ADMIN" : "USER"
         return { id: user.id, email: user.email, name: user.name, image: user.avatarUrl, role }
       },
     }),

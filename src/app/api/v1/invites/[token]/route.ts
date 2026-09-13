@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import * as invites from "@/services/invites.service"
 import { NextResponse } from "next/server"
+import { toInviteInfoResponse } from "@/lib/api/v1/response-mappers"
 
 type Params = { params: Promise<{ token: string }> }
 
@@ -11,5 +12,5 @@ export async function GET(_req: Request, { params }: Params) {
   const { token } = await params
   const info = await invites.getInviteInfo(token, session.user.id)
   if (!info) return NextResponse.json({ error: "Приглашение недействительно" }, { status: 404 })
-  return NextResponse.json({ invite: info })
+  return NextResponse.json(toInviteInfoResponse(info))
 }

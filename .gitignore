@@ -11,6 +11,8 @@ node_modules/
 
 # test coverage output
 /coverage
+/playwright-report/
+/test-results/
 
 # OS junk
 .DS_Store

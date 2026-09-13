@@ -36,9 +36,13 @@ export function Sidebar() {
         <span className="font-bold text-lg">SLOPwise</span>
       </div>
 
-      <nav className="flex flex-col gap-1 flex-1">
+      <nav aria-label="Основная навигация" className="flex flex-col gap-1 flex-1">
         {navItems.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href}>
+          <Link
+            key={href}
+            href={href}
+            aria-current={pathname.startsWith(href) ? "page" : undefined}
+          >
             <div
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
@@ -53,7 +57,11 @@ export function Sidebar() {
       </nav>
 
       <div className="space-y-1 px-1">
-        <Link href="/faq" className="block">
+        <Link
+          href="/faq"
+          className="block"
+          aria-current={pathname.startsWith("/faq") ? "page" : undefined}
+        >
           <div
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
@@ -65,7 +73,15 @@ export function Sidebar() {
           </div>
         </Link>
         <div className="flex items-center justify-between">
-          <Link href={isAdmin ? "/admin/feedback" : "/feedback"} className="flex-1">
+          <Link
+            href={isAdmin ? "/admin/feedback" : "/feedback"}
+            className="flex-1"
+            aria-current={
+              pathname.startsWith(isAdmin ? "/admin/feedback" : "/feedback")
+                ? "page"
+                : undefined
+            }
+          >
             <div
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",

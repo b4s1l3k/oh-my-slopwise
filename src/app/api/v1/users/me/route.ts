@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { updateProfileSchema } from "@/lib/validations/user"
 import { NextResponse } from "next/server"
+import { toProfileResponse } from "@/lib/api/v1/response-mappers"
 
 const profileSelect = {
   id: true,
@@ -22,7 +23,7 @@ export async function GET() {
     where: { id: session.user.id },
     select: profileSelect,
   })
-  return NextResponse.json({ user })
+  return NextResponse.json(toProfileResponse(user))
 }
 
 export async function PATCH(req: Request) {
@@ -40,5 +41,5 @@ export async function PATCH(req: Request) {
     data: parsed.data,
     select: profileSelect,
   })
-  return NextResponse.json({ user })
+  return NextResponse.json(toProfileResponse(user))
 }

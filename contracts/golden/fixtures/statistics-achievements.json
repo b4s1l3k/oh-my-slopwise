@@ -1,0 +1,260 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "statistics-achievements",
+  "description": "Profile statistics mapping and persisted/hidden achievement semantics.",
+  "cases": [
+    {
+      "id": "statistics.profile-shape",
+      "description": "Achievement metrics and lifetime money totals map to the public profile shape.",
+      "operation": "statistics.buildProfile",
+      "input": {
+        "metrics": {
+          "accountAgeDays": 400,
+          "profileReady": 1,
+          "activeGroups": 5,
+          "groupsCreated": 2,
+          "invitesCreated": 3,
+          "expensesCreated": 10,
+          "expensesParticipated": 11,
+          "expensesPaid": 7,
+          "coffeeExpensesPaid": 1,
+          "createdForOthers": 2,
+          "uniquePeople": 4,
+          "maxExpenseParticipants": 6,
+          "maxPaidParticipants": 5,
+          "settlementsSent": 3,
+          "settlementsReceived": 2,
+          "cashSettlements": 1,
+          "equalSplits": 5,
+          "exactSplits": 3,
+          "percentageSplits": 2,
+          "splitMethodsUsed": 3,
+          "customRates": 1,
+          "currenciesUsed": 4,
+          "groupTypesUsed": 4,
+          "homeGroups": 1,
+          "tripGroups": 2,
+          "coupleGroups": 1,
+          "maxGroupMembers": 6,
+          "maxGroupExpenses": 10
+        },
+        "money": {
+          "spent": [
+            { "currency": "RUB", "amount": 5000 },
+            { "currency": "USD", "amount": 1000 }
+          ],
+          "returned": [{ "currency": "RUB", "amount": 200 }]
+        }
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "money": {
+            "spent": [
+              { "currency": "RUB", "amount": 5000 },
+              { "currency": "USD", "amount": 1000 }
+            ],
+            "returned": [{ "currency": "RUB", "amount": 200 }]
+          },
+          "overview": {
+            "expensesParticipated": 11,
+            "expensesCreated": 10,
+            "expensesPaid": 7,
+            "activeGroups": 5
+          },
+          "splits": { "equal": 5, "exact": 3, "percentage": 2 },
+          "collaboration": {
+            "uniquePeople": 4,
+            "settlementsSent": 3,
+            "settlementsReceived": 2,
+            "cashSettlements": 1,
+            "invitesCreated": 3,
+            "createdForOthers": 2
+          },
+          "groups": { "created": 2, "home": 1, "trip": 2, "couple": 1, "other": 1 },
+          "mastery": { "currenciesUsed": 4, "splitMethodsUsed": 3, "customRates": 1 },
+          "records": {
+            "maxExpenseParticipants": 6,
+            "maxPaidParticipants": 5,
+            "maxGroupMembers": 6,
+            "maxGroupExpenses": 10,
+            "accountAgeDays": 400
+          }
+        }
+      }
+    },
+    {
+      "id": "achievements.hidden-locked-redaction",
+      "description": "Locked hidden achievements redact their title, condition, icon, progress and target.",
+      "operation": "achievements.evaluate",
+      "input": {
+        "metrics": {
+          "accountAgeDays": 0,
+          "profileReady": 0,
+          "activeGroups": 0,
+          "groupsCreated": 0,
+          "invitesCreated": 0,
+          "expensesCreated": 0,
+          "expensesParticipated": 0,
+          "expensesPaid": 0,
+          "coffeeExpensesPaid": 0,
+          "createdForOthers": 0,
+          "uniquePeople": 0,
+          "maxExpenseParticipants": 0,
+          "maxPaidParticipants": 0,
+          "settlementsSent": 0,
+          "settlementsReceived": 0,
+          "cashSettlements": 0,
+          "equalSplits": 0,
+          "exactSplits": 0,
+          "percentageSplits": 0,
+          "splitMethodsUsed": 0,
+          "customRates": 0,
+          "currenciesUsed": 0,
+          "groupTypesUsed": 0,
+          "homeGroups": 0,
+          "tripGroups": 0,
+          "coupleGroups": 0,
+          "maxGroupMembers": 0,
+          "maxGroupExpenses": 0
+        },
+        "persistedIds": [],
+        "ids": ["first-expense", "secret-ledger", "secret-coffee-path"]
+      },
+      "expected": {
+        "ok": true,
+        "value": [
+          {
+            "id": "first-expense",
+            "title": "Первый чек",
+            "description": "Добавить первую трату",
+            "category": "START",
+            "icon": "receipt",
+            "unlocked": false,
+            "progress": 0,
+            "target": 1,
+            "percent": 0,
+            "hidden": false
+          },
+          {
+            "id": "secret-ledger",
+            "title": "Секретная ачивка",
+            "description": "Условие откроется вместе с наградой",
+            "category": "ACTIVITY",
+            "icon": "lock",
+            "unlocked": false,
+            "progress": 0,
+            "target": 1,
+            "percent": 0,
+            "hidden": true
+          },
+          {
+            "id": "secret-coffee-path",
+            "title": "Секретная ачивка",
+            "description": "Условие откроется вместе с наградой",
+            "category": "ACTIVITY",
+            "icon": "lock",
+            "unlocked": false,
+            "progress": 0,
+            "target": 1,
+            "percent": 0,
+            "hidden": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "achievements.current-and-persisted-unlocks",
+      "description": "Current progress unlocks thresholds while a persisted hidden achievement remains unlocked below target.",
+      "operation": "achievements.evaluate",
+      "input": {
+        "metrics": {
+          "accountAgeDays": 0,
+          "profileReady": 0,
+          "activeGroups": 0,
+          "groupsCreated": 0,
+          "invitesCreated": 0,
+          "expensesCreated": 10,
+          "expensesParticipated": 0,
+          "expensesPaid": 0,
+          "coffeeExpensesPaid": 1,
+          "createdForOthers": 0,
+          "uniquePeople": 0,
+          "maxExpenseParticipants": 0,
+          "maxPaidParticipants": 0,
+          "settlementsSent": 0,
+          "settlementsReceived": 0,
+          "cashSettlements": 0,
+          "equalSplits": 0,
+          "exactSplits": 0,
+          "percentageSplits": 0,
+          "splitMethodsUsed": 0,
+          "customRates": 0,
+          "currenciesUsed": 0,
+          "groupTypesUsed": 0,
+          "homeGroups": 0,
+          "tripGroups": 0,
+          "coupleGroups": 0,
+          "maxGroupMembers": 0,
+          "maxGroupExpenses": 0
+        },
+        "persistedIds": ["secret-ledger"],
+        "ids": ["first-expense", "expenses-10", "secret-ledger", "secret-coffee-path"]
+      },
+      "expected": {
+        "ok": true,
+        "value": [
+          {
+            "id": "first-expense",
+            "title": "Первый чек",
+            "description": "Добавить первую трату",
+            "category": "START",
+            "icon": "receipt",
+            "unlocked": true,
+            "progress": 10,
+            "target": 1,
+            "percent": 100,
+            "hidden": false
+          },
+          {
+            "id": "expenses-10",
+            "title": "Счёт ведётся",
+            "description": "Добавить 10 трат",
+            "category": "ACTIVITY",
+            "icon": "notebook",
+            "unlocked": true,
+            "progress": 10,
+            "target": 10,
+            "percent": 100,
+            "hidden": false
+          },
+          {
+            "id": "secret-ledger",
+            "title": "Чеканос: Война бесконечных трат",
+            "description": "Добавить 1 000 трат и собрать полный Перчатень расходов",
+            "category": "ACTIVITY",
+            "icon": "crown",
+            "unlocked": true,
+            "progress": 10,
+            "target": 1000,
+            "percent": 1,
+            "hidden": true
+          },
+          {
+            "id": "secret-coffee-path",
+            "title": "Это путь. К кофе",
+            "description": "Оплатить кофе и вступить в орден кофеманов. Таков путь",
+            "category": "ACTIVITY",
+            "icon": "coffee",
+            "unlocked": true,
+            "progress": 1,
+            "target": 1,
+            "percent": 100,
+            "hidden": true
+          }
+        ]
+      }
+    }
+  ]
+}

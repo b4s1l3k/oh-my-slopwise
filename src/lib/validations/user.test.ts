@@ -143,6 +143,14 @@ describe("updateProfileSchema", () => {
   })
 
   describe("name field", () => {
+    it("trims a valid name", () => {
+      const result = updateProfileSchema.safeParse({ name: "  Bob  " })
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.name).toBe("Bob")
+      }
+    })
+
     it("accepts a 1-char name (min)", () => {
       expect(updateProfileSchema.safeParse({ name: "a" }).success).toBe(true)
     })
@@ -156,6 +164,14 @@ describe("updateProfileSchema", () => {
       expect(result.success).toBe(false)
       if (!result.success) {
         expect(result.error.issues[0].path).toEqual(["name"])
+        expect(result.error.issues[0].message).toBe("Имя обязательно")
+      }
+    })
+
+    it("rejects a whitespace-only name with the custom message", () => {
+      const result = updateProfileSchema.safeParse({ name: "   " })
+      expect(result.success).toBe(false)
+      if (!result.success) {
         expect(result.error.issues[0].message).toBe("Имя обязательно")
       }
     })

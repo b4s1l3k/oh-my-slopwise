@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2, Split } from "lucide-react"
+import { getApiErrorMessage } from "@/lib/api/client/api-error"
+import { useRegisterUserMutation } from "@/hooks/api/use-users"
+import { getSafeAuthCallback } from "@/lib/auth-callback"
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -16,31 +19,17 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const registerUser = useRegisterUserMutation()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
     setLoading(true)
 
-    const res = await fetch("/api/v1/users/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
-    })
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => null)
-      const err = data?.error
-      const msg =
-        typeof err === "string"
-          ? err
-          : err?.message ??
-            err?.formErrors?.[0] ??
-            (err?.fieldErrors
-              ? Object.values(err.fieldErrors as Record<string, string[]>)[0]?.[0]
-              : undefined) ??
-            "Ошибка регистрации"
-      setError(msg)
+    try {
+      await registerUser.mutateAsync({ name, email, password })
+    } catch (error) {
+      setError(getApiErrorMessage(error, "Ошибка регистрации"))
       setLoading(false)
       return
     }
@@ -53,7 +42,7 @@ export default function RegisterPage() {
       router.push("/login")
       return
     }
-    const cb = new URLSearchParams(window.location.search).get("callbackUrl") || "/"
+    const cb = getSafeAuthCallback(new URLSearchParams(window.location.search).get("callbackUrl"))
     router.push(cb)
     router.refresh()
   }
@@ -109,7 +98,7 @@ export default function RegisterPage() {
               minLength={8}
             />
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || registerUser.isPending}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Зарегистрироваться
           </Button>

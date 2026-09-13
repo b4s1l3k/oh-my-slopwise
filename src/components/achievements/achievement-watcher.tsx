@@ -3,10 +3,7 @@ import { useEffect, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { useToast } from "@/components/ui/toast"
-
-type UnseenResponse = {
-  unlocked: { id: string; title: string; description: string; icon: string }[]
-}
+import { useCollectUnseenAchievements } from "@/hooks/api/use-achievements"
 
 // Пауза между всплывающими тостами, если открылось несколько ачивок сразу —
 // чтобы они появлялись по очереди, как в Steam, а не одной кучей.
@@ -23,30 +20,30 @@ export function AchievementWatcher() {
   const queryClient = useQueryClient()
   const { status } = useSession()
   const { toast } = useToast()
+  const collectUnseenAchievements = useCollectUnseenAchievements()
 
   const authed = status === "authenticated"
   const inFlight = useRef(false)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Держим свежие toast/queryClient без пересоздания подписки на каждый рендер.
+  // Держим свежий toast без пересоздания подписки на каждый рендер.
   const toastRef = useRef(toast)
-  const clientRef = useRef(queryClient)
   toastRef.current = toast
-  clientRef.current = queryClient
 
   useEffect(() => {
     if (!authed) return
+    const controller = new AbortController()
+    const notificationTimers = new Set<ReturnType<typeof setTimeout>>()
 
     const check = async () => {
       if (inFlight.current) return
       inFlight.current = true
       try {
-        const res = await fetch("/api/v1/users/me/achievements/unseen", { method: "POST" })
-        if (!res.ok) return
-        const data = (await res.json()) as UnseenResponse
-        if (!data.unlocked?.length) return
+        const data = await collectUnseenAchievements(controller.signal)
+        if (!data.length) return
 
-        data.unlocked.forEach((achievement, index) => {
-          setTimeout(() => {
+        data.forEach((achievement, index) => {
+          const timer = setTimeout(() => {
+            notificationTimers.delete(timer)
             toastRef.current({
               kind: "achievement",
               iconName: achievement.icon,
@@ -54,9 +51,8 @@ export function AchievementWatcher() {
               description: achievement.description,
             })
           }, index * STAGGER_MS)
+          notificationTimers.add(timer)
         })
-        // Обновим список ачивок в профиле, если он открыт.
-        clientRef.current.invalidateQueries({ queryKey: ["achievements"] })
       } catch {
         // Тихо игнорируем — уведомления не критичны.
       } finally {
@@ -80,10 +76,13 @@ export function AchievementWatcher() {
     })
 
     return () => {
+      controller.abort()
       if (debounce.current) clearTimeout(debounce.current)
+      notificationTimers.forEach(clearTimeout)
+      notificationTimers.clear()
       unsubscribe()
     }
-  }, [authed, queryClient])
+  }, [authed, collectUnseenAchievements, queryClient])
 
   return null
 }

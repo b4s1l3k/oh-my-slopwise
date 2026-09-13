@@ -26,7 +26,7 @@ const avatarUrlSchema = z
 
 export const updateProfileSchema = z
   .object({
-    name: z.string().min(1, "Имя обязательно").max(100).optional(),
+    name: z.string().trim().min(1, "Имя обязательно").max(100).optional(),
     avatarUrl: avatarUrlSchema,
   })
   .merge(requisitesSchema)

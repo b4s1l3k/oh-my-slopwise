@@ -2,11 +2,8 @@
 
 Статус: утверждаемое целевое направление, не описание текущей реализации. Фактическое состояние существующего Next.js-приложения описано в документах `01`–`08`.
 
-## Исходное допущение
-
-План исходит из того, что существующий backend можно заменить полностью, а production-данные и внешние потребители `/api/v1` пока не требуют zero-downtime migration. Текущий TypeScript-код используется как источник сценариев, инвариантов и characterization tests, но не как шаблон новой архитектуры.
-
-Если до переключения появятся ценные production-данные или сторонние API-клиенты, для них добавляется отдельный offline data migration и compatibility period. Две реализации не должны одновременно записывать одну финансовую БД.
+Текущий TypeScript-код используется как источник сценариев, инвариантов и
+characterization tests, но не как шаблон новой архитектуры.
 
 ## Архитектурное решение
 
@@ -91,11 +88,16 @@ Backend, worker и migrator собираются из одного backend image
 
 Next.js отвечает за рендеринг, навигацию и browser-specific UX. BFF:
 
-- хранит browser session в `HttpOnly`, `Secure`, `SameSite` cookie;
+- хранит в browser только opaque session ID в `HttpOnly`, `Secure`, `SameSite`
+  cookie; access/refresh tokens шифруются server-side в session store;
 - выполняет CSRF/Origin/Fetch-Metadata проверки;
 - получает и обновляет короткоживущий OAuth access token с backend audience;
 - агрегирует только представления, специфичные для web;
 - не содержит финансовых правил и не обращается к доменным таблицам.
+
+Browser вызывает same-origin BFF, BFF добавляет backend bearer token и вызывает
+`/api/v2`; native/WebView networking layer вызывает `/api/v2` напрямую с OAuth
+bearer. Backend не принимает browser cookie как credential.
 
 Web использует сгенерированный TypeScript client из OpenAPI. Компоненты не описывают API DTO вручную.
 
@@ -192,7 +194,10 @@ Expense, Settlement, Membership и Balance нельзя превращать в 
 
 Владеет default/group-specific реквизитами, PII retention и политикой раскрытия. Реквизиты хранятся отдельно от `GroupMember` и не входят в общий group DTO.
 
-Settlement instructions выдаются только после проверки актуального debt edge в том же read snapshot. В security audit записывается факт доступа, но не содержимое реквизитов.
+Settlement instructions выдаются только после проверки отрицательной raw
+position запрашивающего и положительной raw position выбранного получателя в
+том же read snapshot. Simplified debt edge не является authorization rule. В
+security audit записывается факт доступа, но не содержимое реквизитов.
 
 ### FX
 
@@ -267,6 +272,12 @@ flowchart TD
 - architecture tests запрещают transport/ORM leakage и cross-module table access;
 - shared kernel ограничен `Money`, IDs, `Clock`-типами и базовыми error primitives.
 
+Код группируется package-by-context, внутри каждого context сохраняются
+`domain/application/infrastructure`. Межмодульный вызов идёт только через
+application facade/port владельца; SQL-доступ к чужим таблицам запрещён.
+Dependency matrix и эти правила проверяются architecture tests. Выделение
+context в сетевой сервис требует отдельного consistency/operations ADR.
+
 REST/OpenAPI используется для client API. gRPC не добавляется, пока нет реального отдельного внутреннего сервиса.
 
 ## Финансовая модель
@@ -285,7 +296,7 @@ Money(currency, scaledAmount, scale)
 - binary floating point для денег и курсов запрещён;
 - API явно различает `originalMoney` и `settlementMoney`.
 
-FX rate хранится как `NUMERIC` с заданными precision/scale, base/quote currency, source, effective date и fetched time. Rounding mode фиксируется ADR; рекомендуемый default — `HALF_EVEN`. Остаток распределяется детерминированно по стабильному порядку participants, чтобы сумма converted splits всегда совпадала с converted expense total.
+FX rate хранится как `NUMERIC` с заданными precision/scale, base/quote currency, source, effective date и fetched time. Rounding mode зафиксирован ADR как `HALF_EVEN`. Остаток распределяется детерминированно по стабильному порядку participants, чтобы сумма converted splits всегда совпадала с converted expense total.
 
 ### Ledger
 
@@ -293,7 +304,8 @@ Source of truth состоит из business entities и сбалансиров�
 
 - expense создаёт transaction revision и postings участников;
 - settlement создаёт отдельную transaction;
-- изменение expense создаёт новую revision и reversal/delta postings;
+- изменение expense создаёт новую revision, точные reversal postings предыдущей
+  revision и полные postings новой revision;
 - удаление означает void/reversal, а не физическое исчезновение финансовой истории;
 - сумма postings каждой group transaction равна нулю;
 - ручное исправление сохраняет actor, reason и correlation ID.
@@ -533,7 +545,7 @@ Backups включают PostgreSQL PITR, configuration/IaC, signing keys, signe
 - E2E login, invite/deep link, group, expense, settlement, offline retry и push navigation;
 - accessibility и responsive layouts.
 
-Существующие 402 Vitest tests являются characterization/reference suite. Новая реализация не обязана повторять признанные дефекты, но каждое отличие должно быть результатом ADR и нового expected test vector.
+Существующие 549 Vitest tests и 37 language-neutral golden scenarios являются characterization/reference suite. Новая реализация не обязана повторять признанные дефекты, но каждое отличие должно быть результатом ADR и отдельного target expectation в test vector.
 
 ## План полного переписывания
 
@@ -551,7 +563,11 @@ Backups включают PostgreSQL PITR, configuration/IaC, signing keys, signe
 8. identity provider и account deletion;
 9. expected offline/mobile behavior.
 
-Результат: OpenAPI skeleton, executable examples и список старых особенностей, которые намеренно не переносятся.
+Результат: OpenAPI skeleton, отдельный versioned v2 vector manifest/schema,
+матрица всех 32 операций v1 → v2 и список старых особенностей, которые намеренно
+не переносятся. Текущие 37 golden-сценариев остаются v1 characterization и не
+являются target gate. До platform также принимаются ADR по OIDC/account
+deletion и retention idempotency records.
 
 ### Этап 1. Создать новый repository layout и platform foundation
 
@@ -559,7 +575,7 @@ Backups включают PostgreSQL PITR, configuration/IaC, signing keys, signe
 - создать `backend` single-module Gradle project;
 - добавить configuration profiles, Flyway, health/readiness, OTel, error mapping;
 - создать `contracts/openapi` и generated TypeScript client;
-- поднять отдельную новую PostgreSQL schema/database;
+- подключить PostgreSQL с отдельными runtime/migrator credentials;
 - настроить CI для Kotlin, web, contracts и migrations.
 
 Критерий выхода: пустой backend развёртывается, а health/authenticated stub и DB migration проходят production-like pipeline.
@@ -572,7 +588,7 @@ Backups включают PostgreSQL PITR, configuration/IaC, signing keys, signe
 OIDC login
   -> local account mapping
   -> create group command
-  -> group persistence
+  -> group + creator ADMIN membership persistence in one transaction
   -> outbox event
   -> get/list groups
   -> generated web client
@@ -586,12 +602,12 @@ OIDC login
 
 1. membership и invites;
 2. Money/FX;
-3. Expense + split calculation;
-4. ledger postings и positions;
-5. Settlement;
-6. expense revisions/void;
-7. member removal/group closure;
-8. Payee Details privacy query.
+3. Expense revision + splits + postings + positions + idempotency result +
+   outbox event одним атомарным vertical slice;
+4. Settlement;
+5. expense revisions/void;
+6. member removal/group closure;
+7. Payee Details privacy query.
 
 Каждый пункт проходит property, DB, authorization, concurrency и OpenAPI contract tests. Первый обязательный E2E: создать группу → добавить участников → создать expense → увидеть баланс → записать settlement → получить нулевой баланс.
 
@@ -630,39 +646,16 @@ Worker failure не блокирует Core; UI показывает freshness/t
 
 После этого WebView shell можно выпустить быстро, не блокируя последующую нативную разработку.
 
-### Этап 7. Переключение и удаление legacy
-
-Если production-данных нет:
-
-1. создать clean production schema;
-2. выполнить seed/reference import;
-3. переключить web/BFF на новый API;
-4. наблюдать согласованный soak period;
-5. удалить старые Next.js API routes и Prisma runtime.
-
-Если данные появились:
-
-1. остановить legacy writes;
-2. сделать consistent export;
-3. преобразовать данные в новую ledger/model schema;
-4. проверить counts, hashes, balances и referential invariants;
-5. импортировать и выполнить dry-run критических queries;
-6. переключить API;
-7. сохранить legacy snapshot на rollback window.
-
-Не использовать shared-database dual write. Rollback после нового financial write допускается только через заранее проверенный reverse transform либо forward repair.
-
 ## Definition of Done нового backend
 
 - все public operations описаны OpenAPI и не зависят от Prisma/Next.js shapes;
 - Core commands имеют один transaction boundary и idempotency;
 - ledger/position reconciliation возвращает zero drift;
 - authorization matrix и critical E2E зелёные;
-- DB migrations проверены с чистой и предыдущей schema;
+- DB migrations проходят автоматические проверки;
 - web не содержит domain persistence;
 - API готов к медленно обновляемому mobile client;
 - health, metrics, traces, alerts, backup и restore drill работают;
 - load test подтверждает согласованные SLO;
-- legacy backend не получает production traffic и удалён после rollback window.
 
 Главный результат переписывания — не смена TypeScript на Kotlin, а стабильное финансовое ядро и публичный контракт, позволяющие независимо развивать web, WebView и native-клиенты.

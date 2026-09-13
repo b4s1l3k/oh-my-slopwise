@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import * as invites from "@/services/invites.service"
 import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
+import { toInviteTokenResponse } from "@/lib/api/v1/response-mappers"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -12,7 +13,7 @@ export async function POST(_req: Request, { params }: Params) {
   const { id: groupId } = await params
   try {
     const invite = await invites.getOrCreateInvite(groupId, session.user.id)
-    return NextResponse.json({ token: invite.token })
+    return NextResponse.json(toInviteTokenResponse(invite.token))
   } catch (e) {
     return handleServiceError(e)
   }

@@ -1,7 +1,6 @@
 "use client"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useMutation } from "@tanstack/react-query"
 import { feedbackSchema, type FeedbackInput } from "@/lib/validations/feedback"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -9,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/toast"
 import { Loader2 } from "lucide-react"
+import { useCreateFeedbackMutation } from "@/hooks/api/use-feedback"
 
 export default function FeedbackPage() {
   const { toast } = useToast()
@@ -20,21 +20,7 @@ export default function FeedbackPage() {
     formState: { errors },
   } = useForm<FeedbackInput>({ resolver: zodResolver(feedbackSchema) })
 
-  const send = useMutation({
-    mutationFn: async (data: FeedbackInput) => {
-      const res = await fetch("/api/v1/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error("Ошибка отправки")
-    },
-    onSuccess: () => {
-      reset()
-      toast({ title: "Спасибо за отзыв!" })
-    },
-    onError: () => toast({ title: "Не удалось отправить", variant: "destructive" }),
-  })
+  const send = useCreateFeedbackMutation()
 
   return (
     <div className="max-w-lg mx-auto space-y-6">
@@ -49,7 +35,17 @@ export default function FeedbackPage() {
           <CardDescription>Минимум 10 символов</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit((d) => send.mutate(d))} className="space-y-4">
+          <form
+            onSubmit={handleSubmit((data) => send.mutate(data, {
+              onSuccess: () => {
+                reset()
+                toast({ title: "Спасибо за отзыв!" })
+              },
+              onError: () =>
+                toast({ title: "Не удалось отправить", variant: "destructive" }),
+            }))}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label htmlFor="message">Сообщение</Label>
               <Textarea
@@ -59,7 +55,7 @@ export default function FeedbackPage() {
                 {...register("message")}
               />
               {errors.message && (
-                <p className="text-sm text-destructive">{errors.message.message}</p>
+                <p role="alert" className="text-sm text-destructive">{errors.message.message}</p>
               )}
             </div>
             <Button type="submit" className="w-full" disabled={send.isPending}>

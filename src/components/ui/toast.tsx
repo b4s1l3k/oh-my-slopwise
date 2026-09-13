@@ -40,6 +40,7 @@ function ToastItemEl({ t, onDismiss }: { t: ToastItem; onDismiss: () => void }) 
     const Icon = getAchievementIcon(t.iconName ?? "")
     return (
       <div
+        role="status"
         className={cn(
           "flex items-center gap-3 rounded-xl border border-amber-400/40 px-4 py-3 shadow-xl",
           "bg-gradient-to-br from-zinc-900 to-zinc-800 text-zinc-50",
@@ -72,6 +73,7 @@ function ToastItemEl({ t, onDismiss }: { t: ToastItem; onDismiss: () => void }) 
 
   return (
     <div
+      role={t.variant === "destructive" ? "alert" : "status"}
       className={cn(
         "flex items-start gap-3 rounded-lg border px-4 py-3 shadow-lg text-sm animate-in slide-in-from-right-full duration-300",
         t.variant === "destructive"
@@ -88,7 +90,7 @@ function ToastItemEl({ t, onDismiss }: { t: ToastItem; onDismiss: () => void }) 
         <p className="font-medium">{t.title}</p>
         {t.description && <p className="mt-0.5 opacity-90">{t.description}</p>}
       </div>
-      <button onClick={onDismiss} className="opacity-70 hover:opacity-100">
+      <button onClick={onDismiss} className="opacity-70 hover:opacity-100" aria-label="Закрыть">
         <X className="h-4 w-4" />
       </button>
     </div>
@@ -110,7 +112,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-full max-w-sm pointer-events-none">
+      <div className="fixed bottom-16 right-4 z-[100] flex flex-col gap-2 w-full max-w-sm pointer-events-none md:bottom-6">
         {toasts.map((t) => (
           <div key={t.id} className="pointer-events-auto">
             <ToastItemEl t={t} onDismiss={() => dismiss(t.id)} />

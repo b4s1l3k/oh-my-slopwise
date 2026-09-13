@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slopwise.local/contracts/golden/golden-protocol.schema.json",
+  "title": "SLOPwise golden adapter protocol",
+  "$defs": {
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
+      ]
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "caseId", "operation", "input"],
+      "properties": {
+        "protocolVersion": { "const": 1 },
+        "caseId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$" },
+        "operation": { "type": "string", "pattern": "^[a-z]+(?:[A-Za-z]+)?\\.[a-zA-Z]+$" },
+        "input": { "$ref": "#/$defs/jsonValue" }
+      }
+    },
+    "outcome": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok", "value"],
+          "properties": {
+            "ok": { "const": true },
+            "value": { "$ref": "#/$defs/jsonValue" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok", "error"],
+          "properties": {
+            "ok": { "const": false },
+            "error": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["code"],
+              "properties": {
+                "code": { "type": "string", "minLength": 1 },
+                "message": { "type": "string" }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/outcome" }
+  ]
+}

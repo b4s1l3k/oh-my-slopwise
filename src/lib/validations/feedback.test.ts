@@ -23,6 +23,14 @@ describe("feedbackSchema", () => {
         expect(result.data.message).toBe("This app is great, please add dark mode.")
       }
     })
+
+    it("trims surrounding whitespace", () => {
+      const result = feedbackSchema.safeParse({ message: "  Detailed feedback  " })
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.message).toBe("Detailed feedback")
+      }
+    })
   })
 
   describe("required field: message", () => {
@@ -51,6 +59,14 @@ describe("feedbackSchema", () => {
 
     it("rejects an empty message (below min)", () => {
       const result = feedbackSchema.safeParse({ message: "" })
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.issues[0].message).toBe("Минимум 10 символов")
+      }
+    })
+
+    it("rejects a whitespace-only message", () => {
+      const result = feedbackSchema.safeParse({ message: " ".repeat(20) })
       expect(result.success).toBe(false)
       if (!result.success) {
         expect(result.error.issues[0].message).toBe("Минимум 10 символов")

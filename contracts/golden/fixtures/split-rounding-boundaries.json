@@ -1,0 +1,145 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "split-rounding-boundaries",
+  "description": "Exact, equal and percentage allocation boundaries plus converted-minor-unit rounding.",
+  "cases": [
+    {
+      "id": "split.equal-empty",
+      "description": "An empty participant list produces no allocations.",
+      "operation": "expense.calculateSplits",
+      "input": { "totalAmount": 100, "splitType": "EQUAL", "participants": [] },
+      "expected": { "ok": true, "value": [] }
+    },
+    {
+      "id": "split.equal-single",
+      "description": "A single participant receives the complete amount.",
+      "operation": "expense.calculateSplits",
+      "input": { "totalAmount": 2147483647, "splitType": "EQUAL", "participants": [{ "userId": "alice" }] },
+      "expected": { "ok": true, "value": [{ "userId": "alice", "amount": 2147483647 }] }
+    },
+    {
+      "id": "split.equal-one-minor-unit",
+      "description": "One indivisible minor unit is allocated without losing value.",
+      "operation": "expense.calculateSplits",
+      "input": { "totalAmount": 1, "splitType": "EQUAL", "participants": [{ "userId": "alice" }, { "userId": "bob" }, { "userId": "carol" }] },
+      "expected": { "ok": true, "value": [{ "userId": "alice", "amount": 1 }, { "userId": "bob", "amount": 0 }, { "userId": "carol", "amount": 0 }] }
+    },
+    {
+      "id": "split.equal-remainder-is-stable-by-account",
+      "description": "The target allocation assigns an equal-split remainder by immutable account ID, independent of request order.",
+      "operation": "expense.calculateSplits",
+      "input": { "totalAmount": 1, "splitType": "EQUAL", "participants": [{ "userId": "bob" }, { "userId": "alice" }] },
+      "expected": { "ok": true, "value": [{ "userId": "bob", "amount": 0 }, { "userId": "alice", "amount": 1 }] },
+      "expectedByAdapter": {
+        "legacy": { "ok": true, "value": [{ "userId": "bob", "amount": 1 }, { "userId": "alice", "amount": 0 }] }
+      }
+    },
+    {
+      "id": "split.equal-ten-by-three",
+      "description": "A non-divisible equal total remains exact.",
+      "operation": "expense.calculateSplits",
+      "input": { "totalAmount": 10, "splitType": "EQUAL", "participants": [{ "userId": "a" }, { "userId": "b" }, { "userId": "c" }] },
+      "expected": { "ok": true, "value": [{ "userId": "a", "amount": 4 }, { "userId": "b", "amount": 3 }, { "userId": "c", "amount": 3 }] }
+    },
+    {
+      "id": "split.exact-preserves-values",
+      "description": "Exact allocations are not redistributed or reordered.",
+      "operation": "expense.calculateSplits",
+      "input": { "totalAmount": 10, "splitType": "EXACT", "participants": [{ "userId": "b", "amount": 9 }, { "userId": "a", "amount": 1 }] },
+      "expected": { "ok": true, "value": [{ "userId": "b", "amount": 9 }, { "userId": "a", "amount": 1 }] }
+    },
+    {
+      "id": "split.percentage-single",
+      "description": "Ten thousand basis points allocates the whole amount.",
+      "operation": "expense.calculateSplits",
+      "input": { "totalAmount": 999, "splitType": "PERCENTAGE", "participants": [{ "userId": "alice", "percentage": 10000 }] },
+      "expected": { "ok": true, "value": [{ "userId": "alice", "amount": 999 }] }
+    },
+    {
+      "id": "split.percentage-one-and-rest",
+      "description": "A one-basis-point share and its complement conserve a small total.",
+      "operation": "expense.calculateSplits",
+      "input": { "totalAmount": 10000, "splitType": "PERCENTAGE", "participants": [{ "userId": "alice", "percentage": 1 }, { "userId": "bob", "percentage": 9999 }] },
+      "expected": { "ok": true, "value": [{ "userId": "alice", "amount": 1 }, { "userId": "bob", "amount": 9999 }] }
+    },
+    {
+      "id": "split.percentage-thirds",
+      "description": "Percentage floors plus remainder exactly reconstruct the original amount.",
+      "operation": "expense.calculateSplits",
+      "input": { "totalAmount": 100, "splitType": "PERCENTAGE", "participants": [{ "userId": "a", "percentage": 3334 }, { "userId": "b", "percentage": 3333 }, { "userId": "c", "percentage": 3333 }] },
+      "expected": { "ok": true, "value": [{ "userId": "a", "amount": 34 }, { "userId": "b", "amount": 33 }, { "userId": "c", "amount": 33 }] }
+    },
+    {
+      "id": "split.percentage-remainder-is-stable-by-account",
+      "description": "The target percentage remainder tie-break is account-ID based rather than request-order based.",
+      "operation": "expense.calculateSplits",
+      "input": { "totalAmount": 1, "splitType": "PERCENTAGE", "participants": [{ "userId": "bob", "percentage": 5000 }, { "userId": "alice", "percentage": 5000 }] },
+      "expected": { "ok": true, "value": [{ "userId": "bob", "amount": 0 }, { "userId": "alice", "amount": 1 }] },
+      "expectedByAdapter": {
+        "legacy": { "ok": true, "value": [{ "userId": "bob", "amount": 1 }, { "userId": "alice", "amount": 0 }] }
+      }
+    },
+    {
+      "id": "split.fx-identity-exact",
+      "description": "Identity conversion preserves every exact split.",
+      "operation": "expense.convertAndAllocate",
+      "input": { "amount": 7, "factor": 1, "splitType": "EXACT", "participants": [{ "userId": "a", "amount": 2 }, { "userId": "b", "amount": 5 }] },
+      "expected": { "ok": true, "value": { "amount": 7, "amountBase": 7, "splits": [{ "userId": "a", "amount": 2, "amountBase": 2 }, { "userId": "b", "amount": 5, "amountBase": 5 }] } }
+    },
+    {
+      "id": "split.fx-half-even-total",
+      "description": "The target uses decimal HALF_EVEN when the converted total is exactly x.5.",
+      "operation": "expense.convertAndAllocate",
+      "input": { "amount": 5, "factor": 0.5, "splitType": "EXACT", "participants": [{ "userId": "a", "amount": 5 }] },
+      "expected": { "ok": true, "value": { "amount": 5, "amountBase": 2, "splits": [{ "userId": "a", "amount": 5, "amountBase": 2 }] } },
+      "expectedByAdapter": {
+        "legacy": { "ok": true, "value": { "amount": 5, "amountBase": 3, "splits": [{ "userId": "a", "amount": 5, "amountBase": 3 }] } }
+      }
+    },
+    {
+      "id": "split.fx-largest-fraction-wins",
+      "description": "The largest fractional converted share receives the remaining minor unit.",
+      "operation": "expense.convertAndAllocate",
+      "input": { "amount": 10, "factor": 0.26, "splitType": "EXACT", "participants": [{ "userId": "a", "amount": 4 }, { "userId": "b", "amount": 6 }] },
+      "expected": { "ok": true, "value": { "amount": 10, "amountBase": 3, "splits": [{ "userId": "a", "amount": 4, "amountBase": 1 }, { "userId": "b", "amount": 6, "amountBase": 2 }] } }
+    },
+    {
+      "id": "split.fx-database-int-maximum",
+      "description": "The legacy storage maximum is accepted exactly.",
+      "operation": "expense.convertAndAllocate",
+      "input": { "amount": 2147483647, "factor": 1, "splitType": "EXACT", "participants": [{ "userId": "a", "amount": 2147483647 }] },
+      "expected": { "ok": true, "value": { "amount": 2147483647, "amountBase": 2147483647, "splits": [{ "userId": "a", "amount": 2147483647, "amountBase": 2147483647 }] } }
+    },
+    {
+      "id": "split.fx-database-int-overflow",
+      "description": "A converted value one minor unit above the legacy storage maximum is rejected.",
+      "operation": "expense.convertAndAllocate",
+      "input": { "amount": 2147483647, "factor": 1.000000001, "splitType": "EXACT", "participants": [{ "userId": "a", "amount": 2147483647 }] },
+      "expected": { "ok": false, "error": { "code": "CONVERTED_AMOUNT_TOO_LARGE" } }
+    },
+    {
+      "id": "split.fx-total-rounds-to-zero",
+      "description": "A positive source amount that converts below one target minor unit is rejected.",
+      "operation": "expense.convertAndAllocate",
+      "input": { "amount": 1, "factor": 0.49, "splitType": "EXACT", "participants": [{ "userId": "a", "amount": 1 }] },
+      "expected": { "ok": false, "error": { "code": "CONVERTED_AMOUNT_TOO_SMALL" } }
+    },
+    {
+      "id": "money.rub-target-policy",
+      "description": "The target RUB policy uses ISO scale two and the ADR long-integer input bound.",
+      "operation": "money.currencyPolicy",
+      "input": { "currency": "RUB" },
+      "expected": { "ok": true, "value": { "currency": "RUB", "scale": 2, "inputMinimum": 1, "inputMaximum": 1000000000000, "storage": "INT64" } },
+      "expectedByAdapter": { "legacy": { "ok": true, "value": { "currency": "RUB", "scale": 2, "inputMinimum": 1, "inputMaximum": 2000000000, "storage": "INT32" } } }
+    },
+    {
+      "id": "money.jpy-target-policy",
+      "description": "The target JPY policy uses ISO scale zero instead of legacy universal hundredths.",
+      "operation": "money.currencyPolicy",
+      "input": { "currency": "JPY" },
+      "expected": { "ok": true, "value": { "currency": "JPY", "scale": 0, "inputMinimum": 1, "inputMaximum": 1000000000000, "storage": "INT64" } },
+      "expectedByAdapter": { "legacy": { "ok": true, "value": { "currency": "JPY", "scale": 2, "inputMinimum": 1, "inputMaximum": 2000000000, "storage": "INT32" } } }
+    }
+  ]
+}

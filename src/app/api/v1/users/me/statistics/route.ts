@@ -5,6 +5,7 @@ import {
   getHistoricalUserMoneyStatistics,
 } from "@/services/statistics.service"
 import { NextResponse } from "next/server"
+import { toProfileStatisticsResponse } from "@/lib/api/v1/response-mappers"
 
 export async function GET() {
   const session = await auth()
@@ -20,7 +21,7 @@ export async function GET() {
     getHistoricalUserStatistics(session.user.id),
     getHistoricalUserMoneyStatistics(session.user.id),
   ])
-  return NextResponse.json({
-    statistics: buildProfileStatistics(lifetime, money),
-  })
+  return NextResponse.json(
+    toProfileStatisticsResponse(buildProfileStatistics(lifetime, money))
+  )
 }

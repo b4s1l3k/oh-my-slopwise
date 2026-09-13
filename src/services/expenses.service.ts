@@ -248,7 +248,17 @@ export async function createExpense(
         select: { name: true },
       })
       for (const cp of data.cashPayments) {
-        const cashUserName = expense.splits.find((split) => split.userId === cp.userId)?.user.name
+        const cashSplit = expense.splits.find((split) => split.userId === cp.userId)
+        if (!cashSplit) throw new Error("CASH_PAYMENT_INVALID")
+        const cashUserName = cashSplit.user.name
+        const splitAmountBase = cashSplit.amountBase ?? cashSplit.amount
+        // A full cash payment must clear exactly the already reconciled split.
+        // Converting it independently can round to a different minor unit when
+        // the expense remainder was allocated between several participants.
+        const cashAmountBase = cp.amount === cashSplit.amount
+          ? splitAmountBase
+          : toPositiveDatabaseInt(cp.amount * factor)
+        if (cashAmountBase > splitAmountBase) throw new Error("CASH_PAYMENT_INVALID")
         const settlement = await tx.settlement.create({
           data: {
             groupId,
@@ -257,7 +267,7 @@ export async function createExpense(
             toUserId: data.paidById,
             amount: cp.amount,
             currency: data.currency,
-            amountBase: toPositiveDatabaseInt(cp.amount * factor),
+            amountBase: cashAmountBase,
             date: expenseDate,
             notes: `К расходу «${data.title}»`,
           },
@@ -298,7 +308,12 @@ export async function createExpense(
     })
 
     await tx.group.update({ where: { id: groupId }, data: { updatedAt: new Date() } })
-    return expense
+    // Cash settlements are created after the expense itself, so return a fresh
+    // aggregate from the same transaction instead of the pre-settlement snapshot.
+    return tx.expense.findUniqueOrThrow({
+      where: { id: expense.id },
+      include: expenseInclude,
+    })
   })
 }
 

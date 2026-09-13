@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { requisitesSchema } from "@/lib/validations/user"
 import { NextResponse } from "next/server"
+import { toRequisitesResponse } from "@/lib/api/v1/response-mappers"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -29,5 +30,5 @@ export async function PATCH(req: Request, { params }: Params) {
     data: parsed.data,
     select: { payeeName: true, bankName: true, payeeAccount: true },
   })
-  return NextResponse.json({ requisites: updated })
+  return NextResponse.json(toRequisitesResponse(updated))
 }

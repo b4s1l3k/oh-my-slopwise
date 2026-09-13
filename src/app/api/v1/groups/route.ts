@@ -3,13 +3,17 @@ import { createGroupSchema } from "@/lib/validations/group"
 import * as groupsService from "@/services/groups.service"
 import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
+import {
+  toGroupListResponse,
+  toGroupResponse,
+} from "@/lib/api/v1/response-mappers"
 
 export async function GET() {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const groups = await groupsService.getUserGroups(session.user.id)
-  return NextResponse.json({ groups })
+  return NextResponse.json(toGroupListResponse(groups))
 }
 
 export async function POST(req: Request) {
@@ -24,7 +28,7 @@ export async function POST(req: Request) {
 
   try {
     const group = await groupsService.createGroup(session.user.id, parsed.data)
-    return NextResponse.json({ group }, { status: 201 })
+    return NextResponse.json(toGroupResponse(group), { status: 201 })
   } catch (e) {
     return handleServiceError(e)
   }

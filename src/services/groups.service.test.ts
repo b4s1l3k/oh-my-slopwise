@@ -28,7 +28,7 @@ async function createUser(name: string) {
   })
 }
 
-const isoDate = "2026-08-01T12:00:00.000Z"
+const expenseDate = "2026-08-01"
 
 describeDatabase("groups.service behavioral spec", () => {
   afterAll(async () => {
@@ -107,6 +107,35 @@ describeDatabase("groups.service behavioral spec", () => {
       expect(readByMember?.id).toBe(group.id)
     })
 
+    it("does not expose member requisites in the group list", async () => {
+      const [admin, member] = await Promise.all([
+        createUser("List Privacy Admin"),
+        createUser("List Privacy Member"),
+      ])
+      const group = await createGroup(admin.id, {
+        name: "Private requisites list",
+        type: "OTHER",
+        currency: "RUB",
+        memberIds: [member.id],
+      })
+      await prisma.groupMember.update({
+        where: { groupId_userId: { groupId: group.id, userId: admin.id } },
+        data: {
+          payeeName: "Secret Recipient",
+          bankName: "Secret Bank",
+          payeeAccount: "Secret Account",
+        },
+      })
+
+      const listedGroup = (await getUserGroups(member.id)).find(({ id }) => id === group.id)
+      const listedAdmin = listedGroup?.members.find(({ userId }) => userId === admin.id)
+
+      expect(listedAdmin).toBeDefined()
+      expect(listedAdmin).not.toHaveProperty("payeeName")
+      expect(listedAdmin).not.toHaveProperty("bankName")
+      expect(listedAdmin).not.toHaveProperty("payeeAccount")
+    })
+
     it("returns null for a non-member calling getGroup (no visibility)", async () => {
       // SPEC intent: a non-member should be denied. The current implementation
       // signals this by returning null rather than throwing "FORBIDDEN".
@@ -154,7 +183,7 @@ describeDatabase("groups.service behavioral spec", () => {
         title: "Shared dinner",
         amount: 1000,
         currency: "RUB",
-        date: isoDate,
+        date: expenseDate,
         paidById: admin.id,
         splitType: "EQUAL",
         splits: [{ userId: admin.id }, { userId: debtor.id }],
@@ -188,12 +217,23 @@ describeDatabase("groups.service behavioral spec", () => {
         currency: "RUB",
         memberIds: [],
       })
+      await prisma.groupMember.update({
+        where: { groupId_userId: { groupId: group.id, userId: admin.id } },
+        data: {
+          payeeName: "Secret Recipient",
+          bankName: "Secret Bank",
+          payeeAccount: "Secret Account",
+        },
+      })
 
       const updated = await updateGroup(group.id, admin.id, {
         name: "New name",
         description: "New description",
       })
       expect(updated).toMatchObject({ name: "New name", description: "New description" })
+      expect(updated.members[0]).not.toHaveProperty("payeeName")
+      expect(updated.members[0]).not.toHaveProperty("bankName")
+      expect(updated.members[0]).not.toHaveProperty("payeeAccount")
 
       const log = await prisma.activityLog.count({
         where: { groupId: group.id, type: "GROUP_UPDATED" },
@@ -281,9 +321,20 @@ describeDatabase("groups.service behavioral spec", () => {
 
       // Member leaves (soft delete), zero balance.
       await removeMember(group.id, member.id, member.id)
+      await prisma.groupMember.update({
+        where: { groupId_userId: { groupId: group.id, userId: member.id } },
+        data: {
+          payeeName: "Old Recipient",
+          bankName: "Old Bank",
+          payeeAccount: "Old Account",
+        },
+      })
 
       const readded = await addMember(group.id, admin.id, member.id)
       expect(readded).toMatchObject({ isActive: true, role: "MEMBER" })
+      expect(readded).not.toHaveProperty("payeeName")
+      expect(readded).not.toHaveProperty("bankName")
+      expect(readded).not.toHaveProperty("payeeAccount")
 
       const row = await prisma.groupMember.findUnique({
         where: { groupId_userId: { groupId: group.id, userId: member.id } },
@@ -361,7 +412,7 @@ describeDatabase("groups.service behavioral spec", () => {
         title: "Owed dinner",
         amount: 1000,
         currency: "RUB",
-        date: isoDate,
+        date: expenseDate,
         paidById: admin.id,
         splitType: "EQUAL",
         splits: [{ userId: admin.id }, { userId: member.id }],
@@ -377,7 +428,7 @@ describeDatabase("groups.service behavioral spec", () => {
         toUserId: admin.id,
         amount: 500,
         currency: "RUB",
-        date: isoDate,
+        date: expenseDate,
       })
 
       const removed = await removeMember(group.id, admin.id, member.id)
@@ -451,7 +502,7 @@ describeDatabase("groups.service behavioral spec", () => {
         title: "Outstanding dinner",
         amount: 1000,
         currency: "RUB",
-        date: isoDate,
+        date: expenseDate,
         paidById: admin.id,
         splitType: "EQUAL",
         splits: [{ userId: admin.id }, { userId: member.id }],
@@ -465,7 +516,7 @@ describeDatabase("groups.service behavioral spec", () => {
         toUserId: admin.id,
         amount: 500,
         currency: "RUB",
-        date: isoDate,
+        date: expenseDate,
       })
 
       await deleteGroup(group.id, admin.id)

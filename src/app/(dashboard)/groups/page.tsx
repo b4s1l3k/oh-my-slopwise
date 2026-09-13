@@ -1,12 +1,13 @@
 "use client"
-import { useQuery } from "@tanstack/react-query"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils/format"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { QueryErrorState } from "@/components/ui/query-error-state"
 import { Plus, Users } from "lucide-react"
+import { useGroups } from "@/hooks/api/use-groups"
 
 const GROUP_TYPE_LABELS: Record<string, string> = {
   HOME: "🏠 Дом",
@@ -16,14 +17,7 @@ const GROUP_TYPE_LABELS: Record<string, string> = {
 }
 
 export default function GroupsPage() {
-  const { data, isLoading } = useQuery({
-    queryKey: ["groups"],
-    queryFn: async () => {
-      const res = await fetch("/api/v1/groups")
-      if (!res.ok) throw new Error("Failed")
-      return res.json()
-    },
-  })
+  const { data, isLoading, isError, refetch } = useGroups()
 
   return (
     <div className="space-y-6">
@@ -41,7 +35,12 @@ export default function GroupsPage() {
         <div className="space-y-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
         </div>
-      ) : data?.groups?.length === 0 ? (
+      ) : isError ? (
+        <QueryErrorState
+          title="Не удалось загрузить группы"
+          onRetry={() => void refetch()}
+        />
+      ) : data?.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Users className="h-14 w-14 text-muted-foreground mb-4" />
@@ -56,16 +55,8 @@ export default function GroupsPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {data?.groups?.map(
-            (group: {
-              id: string
-              name: string
-              type: string
-              currency: string
-              members: unknown[]
-              _count?: { expenses: number }
-              updatedAt: string
-            }) => (
+          {data?.map(
+            (group) => (
               <Link key={group.id} href={`/groups/${group.id}`}>
                 <Card className="hover:shadow-md transition-shadow cursor-pointer">
                   <CardContent className="p-4">
@@ -79,7 +70,7 @@ export default function GroupsPage() {
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
                           {Array.isArray(group.members) ? group.members.length : 0} участников
-                          {group._count && ` · ${group._count.expenses} расходов`}
+                          {group.expenseCount != null && ` · ${group.expenseCount} расходов`}
                         </p>
                       </div>
                       <div className="text-right text-xs text-muted-foreground">

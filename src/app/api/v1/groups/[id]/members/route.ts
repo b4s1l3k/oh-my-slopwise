@@ -3,6 +3,7 @@ import * as groupsService from "@/services/groups.service"
 import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
 import { z } from "zod"
+import { toGroupMemberResponse } from "@/lib/api/v1/response-mappers"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -21,7 +22,7 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     const member = await groupsService.addMember(groupId, session.user.id, parsed.data.userId)
-    return NextResponse.json({ member }, { status: 201 })
+    return NextResponse.json(toGroupMemberResponse(member), { status: 201 })
   } catch (e) {
     return handleServiceError(e)
   }

@@ -14,7 +14,7 @@ src/lib/db.ts                Prisma Client singleton
 prisma/schema.prisma         persistence model
 ```
 
-Отдельных repository interfaces и transport/domain/persistence DTO нет. Prisma-модели часто возвращаются из service прямо в JSON. Большая часть use-case логики находится в services, однако profile, registration, user search, activity и group requisites routes используют Prisma напрямую.
+Отдельных repository interfaces и разделённых domain/persistence models нет. Services и некоторые routes всё ещё получают Prisma-shaped results, но публичные success responses проходят через явные v1 response DTO и field-by-field mapper-ы. Большая часть use-case логики находится в services, однако profile, registration, user search, activity и group requisites routes используют Prisma напрямую.
 
 ## Стандартный request flow
 
@@ -47,6 +47,18 @@ flowchart LR
 ## Endpoint inventory
 
 Всего реализовано 22 пути `/api/v1` и 32 v1 HTTP-операции, а также Auth.js catch-all route.
+
+Машиночитаемый canonical contract находится в
+`contracts/openapi/v1.openapi.json`. Он описывает текущие DTO, cookie auth, page
+pagination, integer money и неоднородные error envelopes. Контракт и реализация
+меняются вместе; при переписывании неудачную семантику v1 можно исправлять
+явными согласованными изменениями контракта. Тест
+`contracts/openapi/v1.openapi.test.ts` сверяет множество path/method с
+фактическими route handlers и проверяет operation IDs, responses и локальные
+OpenAPI references. `src/app/api/v1/api-routes.contract.test.ts` напрямую
+вызывает handlers и фиксирует status/JSON для всех операций. Отдельные
+field-by-field response mapper-ы не позволяют новым Prisma-полям автоматически
+становиться частью API.
 
 ### Auth.js
 
@@ -118,7 +130,7 @@ Achievement GET является safe read. Persistence и notification claim в
 - positive integer amount до 2 млрд;
 - currency из 20 поддерживаемых кодов;
 - positive custom rate до 1 млн;
-- календарную дату `YYYY-MM-DD` либо legacy ISO timestamp; сервис сохраняет literal day как UTC midnight;
+- строгую календарную дату `YYYY-MM-DD`; timestamp отклоняется, а дата сохраняется как UTC midnight;
 - непустой и уникальный список split users;
 - optional notes длиной до 1000 и optional category без отдельного ограничения длины;
 - exact shares > 0 и точное совпадение суммы;
@@ -133,7 +145,7 @@ Achievement GET является safe read. Persistence и notification claim в
 - description до 500;
 - type из четырёх enum values;
 - supported settlement currency;
-- список member IDs.
+- список непустых member IDs.
 
 Update schema содержит только optional name/description. Пустой object проходит validation и всё равно приводит к update/activity.
 
@@ -141,7 +153,7 @@ Update schema содержит только optional name/description. Пуст�
 
 - непустые group/recipient IDs;
 - positive integer amount до 2 млрд;
-- календарную дату `YYYY-MM-DD` либо legacy ISO timestamp; timezone offset не меняет literal day;
+- строгую календарную дату `YYYY-MM-DD`; timestamp отклоняется;
 - notes до 500;
 - transport currency длиной три символа.
 
@@ -155,7 +167,7 @@ Profile fields нормализуют реквизиты через `trim`; пу
 
 - whitespace-only name/title может пройти `min(1)` там, где нет transform/trim;
 - array size limits для splits, members и cash payments отсутствуют;
-- принимается любая дата, которую способен разобрать JavaScript `Date`;
+- будущие календарные даты не запрещены;
 - лишние JSON fields Zod по умолчанию отбрасывает;
 - часть query parameters проверяется вручную и возвращает другой error shape.
 

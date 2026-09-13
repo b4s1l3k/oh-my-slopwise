@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { feedbackSchema } from "@/lib/validations/feedback"
 import { createFeedback } from "@/services/feedback.service"
 import { handleServiceError } from "@/lib/api-errors"
+import { toFeedbackResponse } from "@/lib/api/v1/response-mappers"
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
 
   try {
     const feedback = await createFeedback(session.user.id, parsed.data.message)
-    return NextResponse.json({ feedback }, { status: 201 })
+    return NextResponse.json(toFeedbackResponse(feedback), { status: 201 })
   } catch (e) {
     return handleServiceError(e)
   }

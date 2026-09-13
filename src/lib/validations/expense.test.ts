@@ -5,7 +5,7 @@ const base = {
   title: "Смузи",
   amount: 240000,
   currency: "RUB" as const,
-  date: "2026-07-21T12:00:00.000Z",
+  date: "2026-07-21",
   paidById: "alice",
   splitType: "EQUAL" as const,
   splits: [{ userId: "alice" }, { userId: "bob" }],
@@ -147,6 +147,11 @@ describe("createExpenseSchema — базовые поля", () => {
 
   it("некорректная дата отклоняется", () => {
     expect(issues({ ...base, date: "не дата" }).some((e) => e.path === "date")).toBe(true)
+    expect(
+      issues({ ...base, date: "2026-07-21T12:00:00.000Z" }).some(
+        (issue) => issue.path === "date"
+      )
+    ).toBe(true)
   })
 
   it("нужен хотя бы один участник", () => {

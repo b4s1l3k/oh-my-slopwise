@@ -11,7 +11,7 @@
 | Production migrations | Custom psql runner без distributed lock/checksum verification | Параллельный rollout или crash window может вызвать duplicate DDL failure, рассинхронизацию history/schema или блокировку startup |
 | CI gates | Docker build без test/typecheck steps | Regression может быть опубликована и сразу отправлена в redeploy |
 | Application admin | Роль выводится только из `ADMIN_EMAIL` при login | Регистрация незанятого admin email или старый JWT создают неочевидный access lifecycle |
-| Observability | Нет structured logs, request IDs, metrics, traces и app health | Production failure трудно обнаружить и расследовать |
+| Observability | Client генерирует `X-Request-ID`, но backend не прокидывает его в structured logs; metrics, traces и app health отсутствуют | Production failure трудно обнаружить и расследовать |
 | Legacy `amountBase` | Nullable, migration не выполняла backfill | Старые foreign-currency строки могут интерпретировать original amount как group currency |
 
 ### Средний приоритет
@@ -19,8 +19,8 @@
 | Область | Текущее состояние | Риск |
 |---|---|---|
 | Balance queries | Полная история группы/всех групп загружается на каждый расчёт | Рост latency и памяти вместе с историей |
-| API contracts | Prisma models и несколько error shapes выходят наружу | Сильная связность frontend/persistence, сложное единое error UX |
-| Frontend cache | Неполная invalidation activity/statistics/groups/overview | Пользователь видит устаревшие данные |
+| API contracts | Response DTO/mappers добавлены, но несколько несовместимых error shapes и legacy DB-поля в v1 contract сохранены | Сложное единое error UX; v2 должен получить новый client-oriented contract |
+| Frontend cache | Централизованная correctness-first invalidation использует широкие prefixes и повторные запросы без optimistic updates/normalized entities | При росте UI и данных mutation может вызывать избыточный refetch; cache не очищается явно при смене identity |
 | UI error states | Часть ошибок отображается как отсутствие данных | Ошибка баланса может выглядеть как отсутствие долгов |
 | Frontend hotspots | Group page/settings/expense form объединяют несколько ответственностей | Высокая цена изменения и сложность тестирования |
 | Invite concurrency | Нет unique active invite на группу | Одновременно могут существовать несколько действующих токенов |
@@ -31,13 +31,14 @@
 ### Низкий/накопительный приоритет
 
 - `Friendship` и legacy `ExpenseSplit.share` не используются;
-- `src/types/index.ts` почти не переиспользуется, DTO дублируются в components;
+- `src/types/index.ts` почти не переиспользуется, transport DTO всё ещё дублируются в components;
 - Zustand и часть UI dependencies не используются;
-- user search не имеет debounce/cancellation;
+- user search через общий query hook отменяет устаревший request, но не имеет debounce;
 - theme state не синхронизируется между mounted navigation variants;
 - accessibility semantics неполны для custom filters/toggles/toasts;
 - destructive UI использует native `confirm` наряду с Radix dialogs;
-- нет общего authorization helper/policy и API client.
+- нет общего server-side authorization helper/policy; web API client уже возвращает DTO
+  и нормализует transport-ошибки в `ApiError`.
 - UI не использует `GET /expenses/:id`, `GET /groups/:id/settlements`, group description, expense category и avatar editing/rendering; часть statistics response также не показывается. Settlement date/notes записываются, но отдельная история manual settlements в UI отсутствует.
 
 ## Корректность отдельных сценариев
@@ -62,7 +63,7 @@ Expense total округляется один раз. Split values сначал�
 
 ### Date-only semantics
 
-Expense и Settlement всё ещё используют `DateTime` в БД, однако boundary трактует поле как business date: формы отправляют `YYYY-MM-DD` без browser timezone conversion, backend нормализует literal date prefix в UTC midnight, edit сохраняет тот же prefix, а expense list форматирует день в UTC. Поэтому выбранный день не сдвигается в UTC-negative timezone. В будущем контракт и схема должны перейти на явный date-only тип; будущие даты пока разрешены и немедленно участвуют в текущем balance, as-of фильтрации нет.
+Expense и Settlement всё ещё используют `DateTime` в БД, однако boundary трактует поле как business date: принимает только `YYYY-MM-DD`, формы не выполняют browser timezone conversion, backend нормализует дату в UTC midnight, а expense list форматирует день в UTC. Поэтому выбранный день не сдвигается в UTC-negative timezone. В будущем схема БД должна перейти на явный date-only тип; будущие даты пока разрешены и немедленно участвуют в текущем balance, as-of фильтрации нет.
 
 Exchange parser не сверяет дату корневого XML-документа с requested day. Для будущей/особой даты источник может вернуть другой фактический набор, который будет сохранён под requested date и станет постоянным exact cache hit.
 
@@ -124,7 +125,7 @@ Service layer достаточно явный для текущего разме
 
 - Prisma import находится непосредственно в services;
 - несколько API routes сами выполняют persistence operations;
-- transport responses основаны на Prisma shapes;
+- service sources остаются Prisma-shaped; HTTP mapper-ы уже изолируют их от transport DTO, но persistence/application граница ещё не выделена;
 - authorization checks дублируются;
 - error codes представлены строками `Error.message`.
 
@@ -134,15 +135,26 @@ Service layer достаточно явный для текущего разме
 
 ## Frontend evolution
 
-Наиболее безопасная последовательность декомпозиции:
+Первые три шага декомпозиции реализованы:
 
-1. единый typed API client и normalizer error response;
-2. query-key factory и таблица invalidation dependencies;
-3. выделение feature hooks из group/settings pages;
-4. разделение ExpenseForm на command state, split editor, currency editor и submit adapter;
-5. явные loading/error/empty states;
-6. browser component tests и несколько критических E2E flows;
-7. accessibility audit custom controls и mobile layouts.
+- HTTP transport и typed domain clients находятся в `src/lib/api/client`;
+- query keys и mutation invalidation централизованы в `src/hooks/api`;
+- feature pages/components получают server state и выполняют mutations только через
+  thin hooks; прямые imports API clients и TanStack Query запрещены архитектурным тестом.
+
+Следующая безопасная последовательность:
+
+1. разделение ExpenseForm на command state, split editor, currency editor и submit adapter;
+2. разделение group workspace/settings на меньшие feature components;
+3. явные единообразные loading/error/empty states;
+4. browser component tests и несколько критических E2E flows;
+5. проверка cache invalidation matrix при каждом новом write use case;
+6. accessibility audit custom controls и mobile layouts.
+
+Текущий слой hooks не содержит router, toast, Auth.js session или form state. Эти
+UI-specific действия остаются в components; hooks владеют только query/mutation options,
+`AbortSignal`, pagination и cache consistency. Исключения из запрета прямого React Query
+в UI ограничены корневым provider и `AchievementWatcher`, подписанным на MutationCache.
 
 ## Security evolution
 

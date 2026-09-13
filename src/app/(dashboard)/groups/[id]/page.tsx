@@ -1,12 +1,12 @@
 "use client"
 import { use, useState, useMemo } from "react"
-import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { formatMoney, formatCalendarDate, getInitials } from "@/lib/utils/format"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { QueryErrorState } from "@/components/ui/query-error-state"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/components/ui/toast"
@@ -17,35 +17,22 @@ import { ExpenseForm } from "@/components/expenses/expense-form"
 import { SettlementForm } from "@/components/balances/settlement-form"
 import { RequisitesNudgeDialog } from "@/components/profile/requisites-nudge-dialog"
 import { getExpenseUserPosition } from "@/lib/utils/expense-user-position"
-
-type Requisites = { payeeName: string | null; bankName: string | null; payeeAccount: string | null }
-type Member = {
-  userId: string
-  role: string
-  payeeName: string | null
-  bankName: string | null
-  payeeAccount: string | null
-  user: {
-    id: string; name: string; avatarUrl: string | null
-    payeeName?: string | null; bankName?: string | null; payeeAccount?: string | null
-  }
-}
-type Expense = {
-  id: string; title: string; amount: number; currency: string; amountBase?: number | null
-  customRate?: number | null
-  date: string; category?: string; splitType: "EQUAL" | "EXACT" | "PERCENTAGE"
-  notes?: string | null; paidById: string
-  paidBy: { id: string; name: string }
-  createdBy: { id: string; name: string }
-  splits: { user: { id: string; name: string }; amount: number; share?: number | null; percentage?: number | null }[]
-  // Расчёты наличными, сделанные в момент этой траты
-  settlements?: { id: string; amount: number; currency: string; fromUser: { id: string; name: string } }[]
-}
-type ExpensesPage = { expenses: Expense[]; total: number; hasNext: boolean }
-type Debt = { fromUserId: string; fromUserName: string; toUserId: string; toUserName: string; amount: number }
+import { ApiError, getApiErrorMessage } from "@/lib/api/client/api-error"
+import { useGroup } from "@/hooks/api/use-group"
+import { useDeleteExpense, useGroupExpenses } from "@/hooks/api/use-expenses"
+import { useGroupBalances, useResetGroupSettlements } from "@/hooks/api/use-settlements"
+import type {
+  ExpenseViewModel,
+  GroupMemberViewModel,
+  RequisitesViewModel,
+  SimplifiedDebtViewModel,
+} from "@/lib/api/view-models/models"
 
 // Реквизиты поездки перекрывают профильные
-function effectiveRequisites(members: Member[], userId: string): Requisites {
+function effectiveRequisites(
+  members: GroupMemberViewModel[],
+  userId: string
+): RequisitesViewModel {
   const m = members.find((x) => x.userId === userId)
   return {
     payeeName: m?.payeeName ?? m?.user.payeeName ?? null,
@@ -57,8 +44,8 @@ function effectiveRequisites(members: Member[], userId: string): Requisites {
 
 // Пояснение к строке разбивки: процент или число долей (для EQUAL/EXACT — пусто)
 function splitDetailLabel(
-  splitType: Expense["splitType"],
-  split: Expense["splits"][number]
+  splitType: ExpenseViewModel["splitType"],
+  split: ExpenseViewModel["splits"][number]
 ): string {
   if (splitType === "PERCENTAGE" && split.percentage != null) {
     return `${split.percentage / 100}%`
@@ -69,11 +56,10 @@ function splitDetailLabel(
 export default function GroupPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: groupId } = use(params)
   const { data: session } = useSession()
-  const qc = useQueryClient()
   const { toast } = useToast()
   const [expenseOpen, setExpenseOpen] = useState(false)
-  const [editExpense, setEditExpense] = useState<Expense | null>(null)
-  const [settlementDebt, setSettlementDebt] = useState<Debt | null>(null)
+  const [editExpense, setEditExpense] = useState<ExpenseViewModel | null>(null)
+  const [settlementDebt, setSettlementDebt] = useState<SimplifiedDebtViewModel | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
   const [requisitesNudge, setRequisitesNudge] = useState(false)
@@ -95,14 +81,12 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     }
   }
 
-  const { data: groupData, isLoading: loadingGroup } = useQuery({
-    queryKey: ["group", groupId],
-    queryFn: async () => {
-      const res = await fetch(`/api/v1/groups/${groupId}`)
-      if (!res.ok) throw new Error("Not found")
-      return res.json()
-    },
-  })
+  const {
+    data: groupData,
+    error: groupError,
+    isLoading: loadingGroup,
+    refetch: refetchGroup,
+  } = useGroup(groupId)
 
   const {
     data: expensesData,
@@ -111,73 +95,51 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     fetchNextPage,
     isFetchingNextPage,
     isFetchNextPageError,
-  } = useInfiniteQuery({
-    queryKey: ["expenses", groupId],
-    initialPageParam: 1,
-    queryFn: async ({ pageParam }) => {
-      const res = await fetch(`/api/v1/groups/${groupId}/expenses?page=${pageParam}`)
-      if (!res.ok) throw new Error("Failed")
-      return res.json() as Promise<ExpensesPage>
-    },
-    getNextPageParam: (lastPage, pages) => lastPage.hasNext ? pages.length + 1 : undefined,
+    isError: expensesError,
+    refetch: refetchExpenses,
+  } = useGroupExpenses(groupId)
+
+  const {
+    data: balancesData,
+    isLoading: loadingBalances,
+    isError: balancesError,
+    refetch: refetchBalances,
+  } = useGroupBalances(groupId)
+
+  const resetSettlementsMutation = useResetGroupSettlements(groupId)
+  const resetting = resetSettlementsMutation.isPending
+  const resetSettlements = () => resetSettlementsMutation.mutate(undefined, {
+    onSuccess: (removed) => toast({
+      title: removed > 0
+        ? `Расчёты сброшены (${removed})`
+        : "Активных расчётов не было",
+      description: "Долги пересчитаны по текущим тратам",
+    }),
+    onError: (error) => toast({
+      title: getApiErrorMessage(error, "Не удалось пересчитать"),
+      variant: "destructive",
+    }),
   })
 
-  const { data: balancesData, isLoading: loadingBalances } = useQuery({
-    queryKey: ["balances", groupId],
-    queryFn: async () => {
-      const res = await fetch(`/api/v1/groups/${groupId}/balances`)
-      if (!res.ok) throw new Error("Failed")
-      return res.json()
-    },
-  })
-
-  const { mutate: resetSettlements, isPending: resetting } = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/v1/groups/${groupId}/settlements`, { method: "DELETE" })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data?.error?.message ?? "Не удалось пересчитать")
-      }
-      return res.json()
-    },
-    onSuccess: (data: { removed: number }) => {
-      qc.invalidateQueries({ queryKey: ["balances", groupId] })
-      qc.invalidateQueries({ queryKey: ["overview"] })
-      toast({
-        title: data.removed > 0 ? `Расчёты сброшены (${data.removed})` : "Активных расчётов не было",
-        description: "Долги пересчитаны по текущим тратам",
-      })
-    },
-    onError: (e) =>
-      toast({ title: e instanceof Error ? e.message : "Ошибка", variant: "destructive" }),
-  })
-
-  const { mutate: deleteExpense } = useMutation({
-    mutationFn: async (expenseId: string) => {
-      const res = await fetch(`/api/v1/expenses/${expenseId}`, { method: "DELETE" })
-      if (!res.ok) throw new Error("Failed")
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["expenses", groupId] })
-      qc.invalidateQueries({ queryKey: ["balances", groupId] })
-      qc.invalidateQueries({ queryKey: ["overview"] })
-      toast({ title: "Расход удалён" })
-    },
+  const deleteExpenseMutation = useDeleteExpense(groupId)
+  const deleteExpense = (expenseId: string) => deleteExpenseMutation.mutate(expenseId, {
+    onSuccess: () => toast({ title: "Расход удалён" }),
     onError: () => toast({ title: "Ошибка удаления", variant: "destructive" }),
   })
 
-  const group = groupData?.group
-  const expenses: Expense[] = expensesData?.pages.flatMap((page) => page.expenses) ?? []
+  const group = groupData
+  const expenses: ExpenseViewModel[] =
+    expensesData?.pages.flatMap((page) => page.expenses) ?? []
   const expensesTotal: number = expensesData?.pages[0]?.total ?? expenses.length
-  const debts: Debt[] = balancesData?.balances?.simplified ?? []
+  const debts: SimplifiedDebtViewModel[] = balancesData?.simplified ?? []
   const myUserId = session?.user?.id
   const iAmAdmin = group?.members?.some(
-    (m: Member) => m.userId === myUserId && m.role === "ADMIN"
+    (member) => member.userId === myUserId && member.role === "ADMIN"
   )
   // Редактировать: автор траты, плательщик или админ. Удалять: автор или админ.
-  const canEdit = (e: Expense) =>
+  const canEdit = (e: ExpenseViewModel) =>
     e.createdBy?.id === myUserId || e.paidBy?.id === myUserId || iAmAdmin
-  const canDelete = (e: Expense) => e.createdBy?.id === myUserId || iAmAdmin
+  const canDelete = (e: ExpenseViewModel) => e.createdBy?.id === myUserId || iAmAdmin
 
   // Дефолтный курс каждого плательщика по каждой валюте (для подстановки в новую трату).
   // Учитываем ТОЛЬКО траты, которые плательщик внёс сам за себя (createdBy === paidBy):
@@ -224,7 +186,17 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     )
   }
 
-  if (!group) return <div className="text-center py-12 text-muted-foreground">Группа не найдена</div>
+  if (!group) {
+    if (groupError instanceof ApiError && (groupError.status === 403 || groupError.status === 404)) {
+      return <div className="text-center py-12 text-muted-foreground">Группа не найдена</div>
+    }
+    return (
+      <QueryErrorState
+        title="Не удалось загрузить группу"
+        onRetry={() => void refetchGroup()}
+      />
+    )
+  }
 
   const myDebts = debts.filter((d) => d.fromUserId === myUserId || d.toUserId === myUserId)
 
@@ -233,7 +205,9 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/groups">
-          <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" aria-label="К списку групп">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
         </Link>
         <div className="flex-1">
           <h1 className="text-2xl font-bold">{group.name}</h1>
@@ -259,12 +233,15 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
-            {group.members?.map((m: Member) => {
+            {group.members?.map((m) => {
               const active = selectedMemberId === m.userId
               return (
-                <div
+                <button
+                  type="button"
                   key={m.userId}
                   onClick={() => setSelectedMemberId(active ? null : m.userId)}
+                  aria-pressed={active}
+                  aria-label={`Фильтр расходов: ${m.user.name}`}
                   className={cn(
                     "flex items-center gap-2 rounded-full px-3 py-1 cursor-pointer transition-colors select-none",
                     active
@@ -287,7 +264,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                       admin
                     </Badge>
                   )}
-                </div>
+                </button>
               )
             })}
           </div>
@@ -329,6 +306,11 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
+          ) : balancesError ? (
+            <QueryErrorState
+              title="Не удалось загрузить долги"
+              onRetry={() => void refetchBalances()}
+            />
           ) : debts.length === 0 ? (
             <div className="flex items-center gap-2 text-green-600">
               <CheckCircle className="h-5 w-5" />
@@ -376,6 +358,11 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
           <div className="space-y-2">
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}
           </div>
+        ) : expensesError && expenses.length === 0 ? (
+          <QueryErrorState
+            title="Не удалось загрузить расходы"
+            onRetry={() => void refetchExpenses()}
+          />
         ) : expenses.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-10 text-center">
@@ -505,7 +492,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                           {" · "}
                           {formatMoney(expense.amount, expense.currency)}
                           {expense.currency !== group.currency && expense.amountBase != null && (
-                            <> {" · "}≈ {formatMoney(expense.amountBase, group.currency)} {group.currency}</>
+                            <> {" · "}≈ {formatMoney(expense.amountBase, group.currency)}</>
                           )}
                         </p>
                         {expense.currency !== group.currency &&
@@ -603,15 +590,12 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
           </DialogHeader>
           <ExpenseForm
             groupId={groupId}
-            members={group.members?.map((m: Member) => m.user) ?? []}
+            members={group.members?.map((member) => member.user) ?? []}
             currency={group.currency}
             rateBook={rateBook}
             recentByPayer={recentByPayer}
             onSuccess={() => {
               setExpenseOpen(false)
-              qc.invalidateQueries({ queryKey: ["expenses", groupId] })
-              qc.invalidateQueries({ queryKey: ["balances", groupId] })
-              qc.invalidateQueries({ queryKey: ["overview"] })
               toast({ title: "Расход добавлен" })
             }}
           />
@@ -627,31 +611,12 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
             </DialogHeader>
             <ExpenseForm
               groupId={groupId}
-              members={group.members?.map((m: Member) => m.user) ?? []}
+              members={group.members?.map((member) => member.user) ?? []}
               currency={group.currency}
               recentByPayer={recentByPayer}
-              expense={{
-                id: editExpense.id,
-                title: editExpense.title,
-                amount: editExpense.amount,
-                currency: editExpense.currency,
-                customRate: editExpense.customRate,
-                splitType: editExpense.splitType,
-                date: editExpense.date,
-                notes: editExpense.notes,
-                paidById: editExpense.paidById,
-                splits: editExpense.splits.map((s) => ({
-                  userId: s.user.id,
-                  amount: s.amount,
-                  share: s.share,
-                  percentage: s.percentage,
-                })),
-              }}
+              expense={editExpense}
               onSuccess={() => {
                 setEditExpense(null)
-                qc.invalidateQueries({ queryKey: ["expenses", groupId] })
-                qc.invalidateQueries({ queryKey: ["balances", groupId] })
-                qc.invalidateQueries({ queryKey: ["overview"] })
                 toast({ title: "Расход обновлён" })
               }}
             />
@@ -685,8 +650,6 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
               payeeRequisites={effectiveRequisites(group.members, settlementDebt.toUserId)}
               onSuccess={() => {
                 setSettlementDebt(null)
-                qc.invalidateQueries({ queryKey: ["balances", groupId] })
-                qc.invalidateQueries({ queryKey: ["overview"] })
                 toast({ title: `Расчёт с ${settlementDebt.toUserName} зафиксирован` })
               }}
             />

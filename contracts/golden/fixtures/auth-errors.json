@@ -1,0 +1,112 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "auth-errors",
+  "description": "Authentication claim projection, bcrypt input boundary and public service errors.",
+  "cases": [
+    {
+      "id": "auth.password-72-ascii-bytes",
+      "description": "A password occupying exactly bcrypt's 72-byte input limit is accepted by the boundary helper.",
+      "operation": "auth.passwordWithinBcryptLimit",
+      "input": {
+        "password": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expected": { "ok": true, "value": { "accepted": true } }
+    },
+    {
+      "id": "auth.password-74-utf8-bytes",
+      "description": "Thirty-seven Cyrillic characters occupy 74 UTF-8 bytes and are rejected.",
+      "operation": "auth.passwordWithinBcryptLimit",
+      "input": { "password": "яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя" },
+      "expected": { "ok": true, "value": { "accepted": false } }
+    },
+    {
+      "id": "auth.default-user-role",
+      "description": "A newly authenticated identity without an explicit role receives USER in token and session claims.",
+      "operation": "auth.projectSession",
+      "input": {
+        "token": { "name": "Иван" },
+        "user": { "id": "u1" },
+        "sessionUser": { "email": "user@example.com" }
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "token": { "name": "Иван", "id": "u1", "role": "USER" },
+          "session": {
+            "user": {
+              "email": "user@example.com",
+              "id": "u1",
+              "name": "Иван",
+              "role": "USER"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "auth.session-name-update",
+      "description": "The Auth.js update trigger changes the token name and projects it into the session.",
+      "operation": "auth.projectSession",
+      "input": {
+        "token": { "id": "u1", "name": "Старое", "role": "ADMIN" },
+        "trigger": "update",
+        "sessionUpdate": { "name": "Новое" },
+        "sessionUser": { "id": "u1", "name": "Старое", "role": "ADMIN" }
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "token": { "id": "u1", "name": "Новое", "role": "ADMIN" },
+          "session": { "user": { "id": "u1", "name": "Новое", "role": "ADMIN" } }
+        }
+      }
+    },
+    {
+      "id": "errors.rate-unavailable",
+      "description": "RATE_UNAVAILABLE maps to the stable 503 service error envelope.",
+      "operation": "error.mapService",
+      "input": { "error": "RATE_UNAVAILABLE" },
+      "expected": {
+        "ok": true,
+        "value": {
+          "status": 503,
+          "body": {
+            "error": {
+              "code": "RATE_UNAVAILABLE",
+              "message": "Курс ЦБ временно недоступен — укажите курс вручную"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "errors.transaction-conflict",
+      "description": "A retry-exhausted serializable conflict maps to the stable 409 envelope.",
+      "operation": "error.mapService",
+      "input": { "error": "TRANSACTION_CONFLICT" },
+      "expected": {
+        "ok": true,
+        "value": {
+          "status": 409,
+          "body": {
+            "error": {
+              "code": "TRANSACTION_CONFLICT",
+              "message": "Данные изменились одновременно — повторите действие"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "errors.unknown-is-generic",
+      "description": "Unknown exceptions return a generic 500 without exposing the internal code.",
+      "operation": "error.mapService",
+      "input": { "error": "DATABASE_PASSWORD_LEAK" },
+      "expected": {
+        "ok": true,
+        "value": { "status": 500, "body": { "error": { "message": "Внутренняя ошибка" } } }
+      }
+    }
+  ]
+}

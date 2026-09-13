@@ -21,7 +21,7 @@ const testPrefix = `codex-expenses-${Date.now()}`
 // pre-existing production rows collide with our fixed factors.
 const RATE_DATE_ISO = "2027-04-15T00:00:00.000Z"
 const RATE_DATE = new Date(RATE_DATE_ISO)
-const EXPENSE_DATE_ISO = RATE_DATE_ISO
+const EXPENSE_DATE = "2027-04-15"
 const SEED_CURRENCIES = ["RUB", "USD", "EUR"]
 
 let userSeq = 0
@@ -54,7 +54,7 @@ function expenseInput(overrides: Partial<CreateExpenseInput>): CreateExpenseInpu
     title: "Test expense",
     amount: 10_000,
     currency: "RUB",
-    date: EXPENSE_DATE_ISO,
+    date: EXPENSE_DATE,
     splitType: "EQUAL",
     paidById: "",
     splits: [],
@@ -211,7 +211,7 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
       expect(expense.amount).toBe(10_000)
       expect(expense.amountBase).toBe(900_000)
       expect(expense.customRate).toBeNull()
-      expect(expense.date).toEqual(new Date(EXPENSE_DATE_ISO))
+      expect(expense.date).toEqual(new Date(`${EXPENSE_DATE}T00:00:00.000Z`))
 
       const splits = await prisma.expenseSplit.findMany({ where: { expenseId: expense.id } })
       // 5000 each → base round(5000*90)=450000 each, summing to the expense base
@@ -464,6 +464,45 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
         })
       ).rejects.toThrow("CASH_PAYMENT_INVALID")
     })
+
+    it("uses the reconciled split base amount for a full cash payment after FX rounding", async () => {
+      const [admin, memberA, memberB] = await Promise.all([
+        makeUser("FX Cash Admin"),
+        makeUser("FX Cash A"),
+        makeUser("FX Cash B"),
+      ])
+      const group = await createGroup(admin.id, {
+        name: "FX cash rounding group",
+        type: "OTHER",
+        currency: "RUB",
+        memberIds: [memberA.id, memberB.id],
+      })
+
+      const expense = await createExpense(
+        group.id,
+        admin.id,
+        expenseInput({
+          amount: 3,
+          currency: "USD",
+          customRate: 1.5,
+          paidById: admin.id,
+          splitType: "EXACT",
+          splits: [
+            { userId: admin.id, amount: 1 },
+            { userId: memberA.id, amount: 1 },
+            { userId: memberB.id, amount: 1 },
+          ],
+          cashPayments: [{ userId: memberB.id, amount: 1 }],
+        })
+      )
+
+      const memberBSplit = expense.splits.find((split) => split.userId === memberB.id)
+      const cash = await prisma.settlement.findFirstOrThrow({ where: { expenseId: expense.id } })
+      expect(memberBSplit?.amountBase).toBe(1)
+      expect(cash.amountBase).toBe(1)
+      expect(await getOutstandingDebt(group.id, memberB.id, admin.id)).toBe(0)
+      expect(await getOutstandingDebt(group.id, memberA.id, admin.id)).toBe(2)
+    })
   })
 
   describe("activity log", () => {
@@ -611,7 +650,7 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
         toUserId: formerPayer.id,
         amount: 10_000,
         currency: "RUB",
-        date: EXPENSE_DATE_ISO,
+        date: EXPENSE_DATE,
       })
       await removeMember(group.id, formerPayer.id, formerPayer.id)
 

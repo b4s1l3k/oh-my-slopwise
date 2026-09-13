@@ -1,0 +1,80 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "balance-determinism",
+  "description": "Raw-position conservation, deterministic simplification and settlement edge boundaries.",
+  "cases": [
+    {
+      "id": "balance.empty",
+      "description": "No financial operations produce no positions or recommendations.",
+      "operation": "balance.calculate",
+      "input": { "userNames": {}, "expenses": [], "settlements": [] },
+      "expected": { "ok": true, "value": { "simplified": [], "raw": [] } }
+    },
+    {
+      "id": "balance.self-share-is-neutral",
+      "description": "The payer's own attributed share does not create debt.",
+      "operation": "balance.calculate",
+      "input": { "userNames": { "alice": "Alice" }, "expenses": [{ "paidById": "alice", "splits": [{ "userId": "alice", "amount": 500 }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "simplified": [], "raw": [{ "userId": "alice", "userName": "Alice", "balance": 0 }] } }
+    },
+    {
+      "id": "balance.repeated-expenses-aggregate",
+      "description": "Positions aggregate across repeated expenses before simplification.",
+      "operation": "balance.calculate",
+      "input": { "userNames": { "alice": "Alice", "bob": "Bob" }, "expenses": [{ "paidById": "alice", "splits": [{ "userId": "bob", "amount": 100 }] }, { "paidById": "alice", "splits": [{ "userId": "bob", "amount": 200 }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "simplified": [{ "fromUserId": "bob", "fromUserName": "Bob", "toUserId": "alice", "toUserName": "Alice", "amount": 300 }], "raw": [{ "userId": "alice", "userName": "Alice", "balance": 300 }, { "userId": "bob", "userName": "Bob", "balance": -300 }] } }
+    },
+    {
+      "id": "balance.large-aggregate-is-int64",
+      "description": "Computed positions may exceed a signed database int even though individual inputs do not.",
+      "operation": "balance.calculate",
+      "input": { "userNames": { "alice": "Alice", "bob": "Bob" }, "expenses": [{ "paidById": "alice", "splits": [{ "userId": "bob", "amount": 2000000000 }] }, { "paidById": "alice", "splits": [{ "userId": "bob", "amount": 2000000000 }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "simplified": [{ "fromUserId": "bob", "fromUserName": "Bob", "toUserId": "alice", "toUserName": "Alice", "amount": 4000000000 }], "raw": [{ "userId": "alice", "userName": "Alice", "balance": 4000000000 }, { "userId": "bob", "userName": "Bob", "balance": -4000000000 }] } }
+    },
+    {
+      "id": "balance.debtor-tie-break-by-account",
+      "description": "Equal debtors are matched in immutable account-ID order in the target algorithm.",
+      "operation": "balance.calculate",
+      "input": { "userNames": { "z": "Z", "bob": "Bob", "alice": "Alice" }, "expenses": [{ "paidById": "z", "splits": [{ "userId": "bob", "amount": 50 }, { "userId": "alice", "amount": 50 }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "simplified": [{ "fromUserId": "alice", "fromUserName": "Alice", "toUserId": "z", "toUserName": "Z", "amount": 50 }, { "fromUserId": "bob", "fromUserName": "Bob", "toUserId": "z", "toUserName": "Z", "amount": 50 }], "raw": [{ "userId": "z", "userName": "Z", "balance": 100 }, { "userId": "bob", "userName": "Bob", "balance": -50 }, { "userId": "alice", "userName": "Alice", "balance": -50 }] } },
+      "expectedByAdapter": { "legacy": { "ok": true, "value": { "simplified": [{ "fromUserId": "bob", "fromUserName": "Bob", "toUserId": "z", "toUserName": "Z", "amount": 50 }, { "fromUserId": "alice", "fromUserName": "Alice", "toUserId": "z", "toUserName": "Z", "amount": 50 }], "raw": [{ "userId": "z", "userName": "Z", "balance": 100 }, { "userId": "bob", "userName": "Bob", "balance": -50 }, { "userId": "alice", "userName": "Alice", "balance": -50 }] } } }
+    },
+    {
+      "id": "balance.creditor-tie-break-by-account",
+      "description": "Equal creditors are matched in immutable account-ID order in the target algorithm.",
+      "operation": "balance.calculate",
+      "input": { "userNames": { "bob": "Bob", "alice": "Alice", "carol": "Carol" }, "expenses": [{ "paidById": "bob", "splits": [{ "userId": "carol", "amount": 50 }] }, { "paidById": "alice", "splits": [{ "userId": "carol", "amount": 50 }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "simplified": [{ "fromUserId": "carol", "fromUserName": "Carol", "toUserId": "alice", "toUserName": "Alice", "amount": 50 }, { "fromUserId": "carol", "fromUserName": "Carol", "toUserId": "bob", "toUserName": "Bob", "amount": 50 }], "raw": [{ "userId": "bob", "userName": "Bob", "balance": 50 }, { "userId": "carol", "userName": "Carol", "balance": -100 }, { "userId": "alice", "userName": "Alice", "balance": 50 }] } },
+      "expectedByAdapter": { "legacy": { "ok": true, "value": { "simplified": [{ "fromUserId": "carol", "fromUserName": "Carol", "toUserId": "bob", "toUserName": "Bob", "amount": 50 }, { "fromUserId": "carol", "fromUserName": "Carol", "toUserId": "alice", "toUserName": "Alice", "amount": 50 }], "raw": [{ "userId": "bob", "userName": "Bob", "balance": 50 }, { "userId": "carol", "userName": "Carol", "balance": -100 }, { "userId": "alice", "userName": "Alice", "balance": 50 }] } } }
+    },
+    {
+      "id": "balance.fallback-to-account-id",
+      "description": "Missing display names fall back to the stable account ID.",
+      "operation": "balance.calculate",
+      "input": { "userNames": {}, "expenses": [{ "paidById": "a", "splits": [{ "userId": "b", "amount": 5 }] }], "settlements": [] },
+      "expected": { "ok": true, "value": { "simplified": [{ "fromUserId": "b", "fromUserName": "b", "toUserId": "a", "toUserName": "a", "amount": 5 }], "raw": [{ "userId": "a", "userName": "a", "balance": 5 }, { "userId": "b", "userName": "b", "balance": -5 }] } }
+    },
+    {
+      "id": "settlement.exact-upper-bound",
+      "description": "A settlement equal to the outstanding amount is accepted and reaches zero.",
+      "operation": "settlement.apply",
+      "input": { "actorId": "b", "toUserId": "a", "activeMemberIds": ["a", "b"], "outstanding": 2000000000, "amount": 2000000000, "groupCurrency": "JPY", "date": "2024-02-29" },
+      "expected": { "ok": true, "value": { "settlement": { "fromUserId": "b", "toUserId": "a", "amount": 2000000000, "amountBase": 2000000000, "currency": "JPY", "date": "2024-02-29T00:00:00.000Z" }, "remaining": 0 } }
+    },
+    {
+      "id": "settlement.inactive-actor",
+      "description": "An inactive debtor cannot create a settlement.",
+      "operation": "settlement.apply",
+      "input": { "actorId": "b", "toUserId": "a", "activeMemberIds": ["a"], "outstanding": 1, "amount": 1, "groupCurrency": "RUB", "date": "2026-01-01" },
+      "expected": { "ok": false, "error": { "code": "FORBIDDEN" } }
+    },
+    {
+      "id": "settlement.zero-outstanding",
+      "description": "A non-debtor cannot transfer through the settlement endpoint.",
+      "operation": "settlement.apply",
+      "input": { "actorId": "b", "toUserId": "a", "activeMemberIds": ["a", "b"], "outstanding": 0, "amount": 1, "groupCurrency": "RUB", "date": "2026-01-01" },
+      "expected": { "ok": false, "error": { "code": "NO_DEBT" } }
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import { createExpenseSchema } from "@/lib/validations/expense"
 import * as expensesService from "@/services/expenses.service"
 import { handleServiceError } from "@/lib/api-errors"
 import { NextResponse } from "next/server"
+import { toExpenseResponse } from "@/lib/api/v1/response-mappers"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -13,7 +14,7 @@ export async function GET(_req: Request, { params }: Params) {
   const { id } = await params
   const expense = await expensesService.getExpense(id, session.user.id)
   if (!expense) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  return NextResponse.json({ expense })
+  return NextResponse.json(toExpenseResponse(expense))
 }
 
 export async function PATCH(req: Request, { params }: Params) {
@@ -29,7 +30,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
   try {
     const expense = await expensesService.updateExpense(id, session.user.id, parsed.data)
-    return NextResponse.json({ expense })
+    return NextResponse.json(toExpenseResponse(expense))
   } catch (e) {
     return handleServiceError(e)
   }

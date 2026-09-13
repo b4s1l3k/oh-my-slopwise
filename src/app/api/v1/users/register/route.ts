@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import { registrationSchema } from "@/lib/validations/auth"
+import { toRegisterUserResponse } from "@/lib/api/v1/response-mappers"
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null)
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
       select: { id: true, email: true, name: true, avatarUrl: true },
     })
 
-    return NextResponse.json({ user }, { status: 201 })
+    return NextResponse.json(toRegisterUserResponse(user), { status: 201 })
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       return NextResponse.json(

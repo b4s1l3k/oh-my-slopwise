@@ -1,7 +1,6 @@
 "use client"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useToast } from "@/components/ui/toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,54 +11,50 @@ import { Loader2, ArrowLeft, Search, X } from "lucide-react"
 import Link from "next/link"
 import { getInitials } from "@/lib/utils/format"
 import { CurrencySelect } from "@/components/ui/currency-select"
-
-type UserResult = { id: string; name: string; avatarUrl: string | null }
+import { useCreateGroup } from "@/hooks/api/use-groups"
+import { useUserSearchQuery } from "@/hooks/api/use-users"
+import type {
+  GroupTypeViewModel,
+  UserSummaryViewModel,
+} from "@/lib/api/view-models/models"
 
 export default function NewGroupPage() {
   const router = useRouter()
-  const qc = useQueryClient()
   const { toast } = useToast()
 
   const [name, setName] = useState("")
-  const [type, setType] = useState("OTHER")
+  const [type, setType] = useState<GroupTypeViewModel>("OTHER")
   const [currency, setCurrency] = useState("RUB")
-  const [members, setMembers] = useState<UserResult[]>([])
+  const [members, setMembers] = useState<UserSummaryViewModel[]>([])
   const [searchQuery, setSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState<UserResult[]>([])
-  const [searching, setSearching] = useState(false)
+  const { data: foundUsers = [] } = useUserSearchQuery(searchQuery)
+  const searchResults = foundUsers.filter(
+    (user) => !members.some((member) => member.id === user.id)
+  )
+  const createGroup = useCreateGroup()
 
-  async function searchUsers(q: string) {
-    if (q.length < 2) { setSearchResults([]); return }
-    setSearching(true)
-    const res = await fetch(`/api/v1/users/search?q=${encodeURIComponent(q)}`)
-    const data = await res.json()
-    setSearchResults(data.users?.filter((u: UserResult) => !members.find((m) => m.id === u.id)) ?? [])
-    setSearching(false)
-  }
-
-  const { mutate: createGroup, isPending } = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/v1/groups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, type, currency, memberIds: members.map((m) => m.id) }),
-      })
-      if (!res.ok) throw new Error("Ошибка создания группы")
-      return res.json()
+  const submit = () => createGroup.mutate(
+    {
+      name,
+      type,
+      currency,
+      memberIds: members.map((member) => member.id),
     },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["groups"] })
-      toast({ title: `Группа "${name}" создана` })
-      router.push(`/groups/${data.group.id}`)
-    },
-    onError: () => toast({ title: "Ошибка создания группы", variant: "destructive" }),
-  })
+    {
+      onSuccess: (data) => {
+        toast({ title: `Группа "${name}" создана` })
+        router.push(`/groups/${data.id}`)
+      },
+      onError: () =>
+        toast({ title: "Ошибка создания группы", variant: "destructive" }),
+    }
+  )
 
   return (
     <div className="space-y-6 max-w-lg mx-auto">
       <div className="flex items-center gap-3">
         <Link href="/groups">
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" aria-label="К списку групп">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
@@ -81,7 +76,12 @@ export default function NewGroupPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Тип</Label>
-              <Select value={type} onValueChange={setType}>
+              <Select
+                value={type}
+                onValueChange={(value) =>
+                  setType(value as GroupTypeViewModel)
+                }
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="HOME">🏠 Дом</SelectItem>
@@ -108,10 +108,7 @@ export default function NewGroupPage() {
               className="pl-9"
               placeholder="Найти по имени..."
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value)
-                searchUsers(e.target.value)
-              }}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
 
@@ -124,7 +121,6 @@ export default function NewGroupPage() {
                   className="w-full flex items-center gap-3 px-3 py-2 hover:bg-accent text-left"
                   onClick={() => {
                     setMembers((prev) => [...prev, user])
-                    setSearchResults([])
                     setSearchQuery("")
                   }}
                 >
@@ -166,10 +162,10 @@ export default function NewGroupPage() {
 
       <Button
         className="w-full"
-        disabled={!name.trim() || isPending}
-        onClick={() => createGroup()}
+        disabled={!name.trim() || createGroup.isPending}
+        onClick={submit}
       >
-        {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {createGroup.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         Создать группу
       </Button>
     </div>

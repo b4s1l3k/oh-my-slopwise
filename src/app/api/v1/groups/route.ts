@@ -7,6 +7,7 @@ import {
   toGroupListResponse,
   toGroupResponse,
 } from "@/lib/api/v1/response-mappers"
+import { readIdempotencyKey } from "@/lib/idempotency-key"
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -32,7 +33,11 @@ export async function POST(req: Request) {
   }
 
   try {
-    const group = await groupsService.createGroup(session.user.id, parsed.data)
+    const group = await groupsService.createGroup(
+      session.user.id,
+      parsed.data,
+      readIdempotencyKey(req)
+    )
     return NextResponse.json(toGroupResponse(group), { status: 201 })
   } catch (e) {
     return handleServiceError(e)

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError, getApiErrorMessage } from "@/lib/api/client/api-error"
-import { apiRequest } from "@/lib/api/client/http-client"
+import { apiRequest, idempotentApiRequest } from "@/lib/api/client/http-client"
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -188,6 +188,44 @@ describe("apiRequest", () => {
     controller.abort()
 
     await expect(apiRequest("/items", { signal: controller.signal })).rejects.toBe(abortError)
+  })
+
+  it("reuses an idempotency key after an ambiguous network failure", async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(Response.json({ id: "created" }))
+      .mockResolvedValueOnce(Response.json({ id: "created-again" }))
+    const options = { method: "POST", body: { name: "Item" } }
+
+    await expect(idempotentApiRequest("/items", options)).rejects.toMatchObject({
+      code: "NETWORK_ERROR",
+    })
+    await expect(idempotentApiRequest("/items", options)).resolves.toEqual({ id: "created" })
+    await idempotentApiRequest("/items", options)
+
+    const keys = fetchMock.mock.calls.map((call) => new Headers(call[1]?.headers).get("Idempotency-Key"))
+    expect(keys[0]).toBeTruthy()
+    expect(keys[1]).toBe(keys[0])
+    expect(keys[2]).not.toBe(keys[1])
+  })
+
+  it("reuses an idempotency key after a retryable HTTP failure", async () => {
+    fetchMock
+      .mockResolvedValueOnce(Response.json(
+        { error: { code: "RATE_UNAVAILABLE", message: "Retry later" } },
+        { status: 503 }
+      ))
+      .mockResolvedValueOnce(Response.json({ id: "created" }))
+    const options = { method: "POST", body: { name: "Retryable item" } }
+
+    await expect(idempotentApiRequest("/retryable-items", options)).rejects.toMatchObject({
+      status: 503,
+    })
+    await idempotentApiRequest("/retryable-items", options)
+
+    const firstKey = new Headers(fetchMock.mock.calls[0][1]?.headers).get("Idempotency-Key")
+    const secondKey = new Headers(fetchMock.mock.calls[1][1]?.headers).get("Idempotency-Key")
+    expect(secondKey).toBe(firstKey)
   })
 })
 

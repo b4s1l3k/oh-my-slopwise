@@ -46,6 +46,18 @@ CREATE TYPE "GroupType" AS ENUM (
 
 
 --
+-- Name: IdempotencyOperation; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE "IdempotencyOperation" AS ENUM (
+    'CREATE_GROUP',
+    'CREATE_EXPENSE',
+    'CREATE_SETTLEMENT',
+    'CREATE_FEEDBACK'
+);
+
+
+--
 -- Name: SplitType; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -1008,6 +1020,25 @@ CREATE TABLE groups (
 
 
 --
+-- Name: idempotency_records; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE idempotency_records (
+    id text NOT NULL,
+    "principalId" text NOT NULL,
+    operation "IdempotencyOperation" NOT NULL,
+    key character varying(128) NOT NULL,
+    "requestHash" character(64) NOT NULL,
+    "resourceId" text NOT NULL,
+    "createdAt" timestamp(3) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "expiresAt" timestamp(3) with time zone NOT NULL,
+    CONSTRAINT idempotency_records_key_format_check CHECK (((length((key)::text) >= 8) AND ((key)::text ~ '^[A-Za-z0-9._:-]+$'::text))),
+    CONSTRAINT idempotency_records_request_hash_check CHECK (("requestHash" ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT idempotency_records_resource_id_check CHECK ((length("resourceId") >= 1))
+);
+
+
+--
 -- Name: settlements; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1189,6 +1220,14 @@ ALTER TABLE ONLY group_members
 
 ALTER TABLE ONLY groups
     ADD CONSTRAINT groups_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idempotency_records idempotency_records_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY idempotency_records
+    ADD CONSTRAINT idempotency_records_pkey PRIMARY KEY (id);
 
 
 --
@@ -1378,6 +1417,20 @@ CREATE INDEX "group_members_userId_isActive_groupUpdatedAt_groupId_idx" ON group
 --
 
 CREATE INDEX "groups_createdById_idx" ON groups USING btree ("createdById");
+
+
+--
+-- Name: idempotency_records_principalId_expiresAt_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "idempotency_records_principalId_expiresAt_idx" ON idempotency_records USING btree ("principalId", "expiresAt");
+
+
+--
+-- Name: idempotency_records_principalId_operation_key_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "idempotency_records_principalId_operation_key_key" ON idempotency_records USING btree ("principalId", operation, key);
 
 
 --
@@ -1743,6 +1796,14 @@ ALTER TABLE ONLY group_members
 
 ALTER TABLE ONLY groups
     ADD CONSTRAINT "groups_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES users(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: idempotency_records idempotency_records_principalId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY idempotency_records
+    ADD CONSTRAINT "idempotency_records_principalId_fkey" FOREIGN KEY ("principalId") REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --

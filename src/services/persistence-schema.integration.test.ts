@@ -29,7 +29,9 @@ describeDatabase("database architecture contract", () => {
           ('exchange_rates', 'rate'),
           ('expenses', 'amountBase'),
           ('expense_splits', 'amountBase'),
-          ('settlements', 'amountBase')
+          ('settlements', 'amountBase'),
+          ('idempotency_records', 'createdAt'),
+          ('idempotency_records', 'expiresAt')
         )
     `
     const byColumn = Object.fromEntries(columns.map((column) => [
@@ -42,6 +44,8 @@ describeDatabase("database architecture contract", () => {
     expect(byColumn["expenses.createdAt"].data_type).toBe("timestamp with time zone")
     expect(byColumn["group_members.groupUpdatedAt"].data_type).toBe("timestamp with time zone")
     expect(byColumn["group_members.groupUpdatedAt"].is_nullable).toBe("NO")
+    expect(byColumn["idempotency_records.createdAt"].data_type).toBe("timestamp with time zone")
+    expect(byColumn["idempotency_records.expiresAt"].data_type).toBe("timestamp with time zone")
     expect(byColumn["expenses.customRate"].data_type).toBe("numeric")
     expect(byColumn["exchange_rates.rate"].data_type).toBe("numeric")
     for (const key of [
@@ -71,6 +75,8 @@ describeDatabase("database architecture contract", () => {
       "group_member_positions_userId_groupId_idx",
       "user_statistic_facts_reference_kind_idx",
       "group_members_userId_isActive_groupUpdatedAt_groupId_idx",
+      "idempotency_records_principalId_expiresAt_idx",
+      "idempotency_records_principalId_operation_key_key",
     ]) {
       expect(definitions.has(name), name).toBe(true)
     }
@@ -97,6 +103,7 @@ describeDatabase("database architecture contract", () => {
       "user_statistic_metrics",
       "user_statistic_currencies",
       "user_statistic_money",
+      "idempotency_records",
     ]) {
       expect(tableNames.has(name), name).toBe(true)
     }

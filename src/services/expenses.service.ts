@@ -11,6 +11,7 @@ import {
   recordExpenseHistory,
   recordSettlementHistory,
 } from "@/services/statistics-history.service"
+import { runIdempotentCommand } from "@/lib/idempotent-command"
 
 const splitInclude = {
   user: { select: { id: true, name: true, avatarUrl: true } },
@@ -228,130 +229,151 @@ async function resolveFactor(
 export async function createExpense(
   groupId: string,
   userId: string,
-  data: CreateExpenseInput
+  data: CreateExpenseInput,
+  idempotencyKey?: string
 ) {
-  const settlementCurrency = await validateExpenseParticipants(groupId, userId, data)
-  const expenseDate = parseCalendarDate(data.date)
-  const { factor, customRate } = await resolveFactor(data, settlementCurrency, expenseDate)
-  const { amountBase, splitRows } = buildExpenseAmounts(data, factor)
-
-  return runSerializableTransaction(async (tx) => {
-    await lockGroupInvariants(tx, groupId)
-    // Re-validate membership inside the transaction (A4 race guard)
-    const txGroup = await tx.group.findUnique({
-      where: { id: groupId },
-      include: { members: { where: { isActive: true }, select: { userId: true } } },
-    })
-    if (!txGroup) throw new Error("NOT_FOUND")
-    const txIds = new Set(txGroup.members.map((m) => m.userId))
-    if (!txIds.has(userId)) throw new Error("FORBIDDEN")
-    if (!txIds.has(data.paidById)) throw new Error("PAYER_NOT_MEMBER")
-    for (const s of data.splits) if (!txIds.has(s.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
-    for (const cp of data.cashPayments ?? []) if (!txIds.has(cp.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
-
-    const expense = await tx.expense.create({
-      data: {
-        groupId,
-        paidById: data.paidById,
-        createdById: userId,
-        title: data.title,
-        amount: data.amount,
-        currency: data.currency, // валюта конкретной траты
-        amountBase, // в валюте расчёта группы
-        customRate, // ручной курс или null (курс ЦБ)
-        category: data.category,
-        splitType: data.splitType,
-        date: expenseDate,
-        notes: data.notes,
-        splits: { create: splitRows },
-      },
-      include: expenseInclude,
-    })
-
-    await tx.activityLog.create({
-      data: {
-        groupId,
-        actorId: userId,
-        type: "EXPENSE_CREATED",
-        entityType: "expense",
-        entityId: expense.id,
-        metadata: { title: expense.title, amount: expense.amount, currency: expense.currency },
-      },
-    })
-
-    // Создаём расчёты для наличных платежей на месте (атомарно с расходом)
-    if (data.cashPayments && data.cashPayments.length > 0) {
-      const payer = await tx.user.findUnique({
-        where: { id: data.paidById },
-        select: { name: true },
+  return runIdempotentCommand({
+    principalId: userId,
+    operation: "CREATE_EXPENSE",
+    key: idempotencyKey,
+    request: { groupId, ...data },
+    preflightReplay: true,
+    prepare: async () => {
+      const settlementCurrency = await validateExpenseParticipants(groupId, userId, data)
+      const expenseDate = parseCalendarDate(data.date)
+      const { factor, customRate } = await resolveFactor(data, settlementCurrency, expenseDate)
+      const { amountBase, splitRows } = buildExpenseAmounts(data, factor)
+      return { expenseDate, factor, customRate, amountBase, splitRows }
+    },
+    execute: async (tx, prepared) => {
+      const { expenseDate, factor, customRate, amountBase, splitRows } = prepared
+      await lockGroupInvariants(tx, groupId)
+      // Re-validate membership inside the transaction (A4 race guard)
+      const txGroup = await tx.group.findUnique({
+        where: { id: groupId },
+        include: { members: { where: { isActive: true }, select: { userId: true } } },
       })
-      for (const cp of data.cashPayments) {
-        const cashSplit = expense.splits.find((split) => split.userId === cp.userId)
-        if (!cashSplit) throw new Error("CASH_PAYMENT_INVALID")
-        const cashUserName = cashSplit.user.name
-        const splitAmountBase = cashSplit.amountBase ?? cashSplit.amount
-        // A full cash payment must clear exactly the already reconciled split.
-        // Converting it independently can round to a different minor unit when
-        // the expense remainder was allocated between several participants.
-        const cashAmountBase = cp.amount === cashSplit.amount
-          ? splitAmountBase
-          : toPositiveDatabaseInt(cp.amount * factor)
-        if (cashAmountBase > splitAmountBase) throw new Error("CASH_PAYMENT_INVALID")
-        const settlement = await tx.settlement.create({
-          data: {
-            groupId,
-            expenseId: expense.id, // связь с тратой — расчёт сделан в её момент
-            fromUserId: cp.userId,
-            toUserId: data.paidById,
-            amount: cp.amount,
-            currency: data.currency,
-            amountBase: cashAmountBase,
-            date: expenseDate,
-            notes: `К расходу «${data.title}»`,
-          },
+      if (!txGroup) throw new Error("NOT_FOUND")
+      const txIds = new Set(txGroup.members.map((m) => m.userId))
+      if (!txIds.has(userId)) throw new Error("FORBIDDEN")
+      if (!txIds.has(data.paidById)) throw new Error("PAYER_NOT_MEMBER")
+      for (const s of data.splits) {
+        if (!txIds.has(s.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
+      }
+      for (const cp of data.cashPayments ?? []) {
+        if (!txIds.has(cp.userId)) throw new Error("SPLIT_USER_NOT_MEMBER")
+      }
+
+      const expense = await tx.expense.create({
+        data: {
+          groupId,
+          paidById: data.paidById,
+          createdById: userId,
+          title: data.title,
+          amount: data.amount,
+          currency: data.currency, // валюта конкретной траты
+          amountBase, // в валюте расчёта группы
+          customRate, // ручной курс или null (курс ЦБ)
+          category: data.category,
+          splitType: data.splitType,
+          date: expenseDate,
+          notes: data.notes,
+          splits: { create: splitRows },
+        },
+        include: expenseInclude,
+      })
+
+      await tx.activityLog.create({
+        data: {
+          groupId,
+          actorId: userId,
+          type: "EXPENSE_CREATED",
+          entityType: "expense",
+          entityId: expense.id,
+          metadata: { title: expense.title, amount: expense.amount, currency: expense.currency },
+        },
+      })
+
+      // Создаём расчёты для наличных платежей на месте (атомарно с расходом)
+      if (data.cashPayments && data.cashPayments.length > 0) {
+        const payer = await tx.user.findUnique({
+          where: { id: data.paidById },
+          select: { name: true },
         })
-        await tx.activityLog.create({
-          data: {
-            groupId,
-            // actorId is always the authenticated recorder. The participant
-            // who handed over cash is kept separately in metadata.
-            actorId: userId,
-            type: "SETTLEMENT_CREATED",
-            entityType: "settlement",
-            entityId: settlement.id,
-            metadata: {
+        for (const cp of data.cashPayments) {
+          const cashSplit = expense.splits.find((split) => split.userId === cp.userId)
+          if (!cashSplit) throw new Error("CASH_PAYMENT_INVALID")
+          const cashUserName = cashSplit.user.name
+          const splitAmountBase = cashSplit.amountBase ?? cashSplit.amount
+          // A full cash payment must clear exactly the already reconciled split.
+          // Converting it independently can round to a different minor unit when
+          // the expense remainder was allocated between several participants.
+          const cashAmountBase = cp.amount === cashSplit.amount
+            ? splitAmountBase
+            : toPositiveDatabaseInt(cp.amount * factor)
+          if (cashAmountBase > splitAmountBase) throw new Error("CASH_PAYMENT_INVALID")
+          const settlement = await tx.settlement.create({
+            data: {
+              groupId,
+              expenseId: expense.id, // связь с тратой — расчёт сделан в её момент
+              fromUserId: cp.userId,
+              toUserId: data.paidById,
               amount: cp.amount,
               currency: data.currency,
-              toUserName: payer?.name,
-              cashFromUserName: cashUserName,
+              amountBase: cashAmountBase,
+              date: expenseDate,
+              notes: `К расходу «${data.title}»`,
             },
-          },
-        })
-        await recordSettlementHistory(tx, settlement)
+          })
+          await tx.activityLog.create({
+            data: {
+              groupId,
+              // actorId is always the authenticated recorder. The participant
+              // who handed over cash is kept separately in metadata.
+              actorId: userId,
+              type: "SETTLEMENT_CREATED",
+              entityType: "settlement",
+              entityId: settlement.id,
+              metadata: {
+                amount: cp.amount,
+                currency: data.currency,
+                toUserName: payer?.name,
+                cashFromUserName: cashUserName,
+              },
+            },
+          })
+          await recordSettlementHistory(tx, settlement)
+        }
       }
-    }
 
-    await recordExpenseHistory(tx, {
-      id: expense.id,
-      groupId: expense.groupId,
-      createdById: expense.createdById,
-      paidById: expense.paidById,
-      currency: expense.currency,
-      amount: expense.amount,
-      title: expense.title,
-      category: expense.category,
-      splitType: expense.splitType,
-      customRate: decimalToNumber(expense.customRate),
-      participantIds: expense.splits.map((split) => split.userId),
-    })
+      await recordExpenseHistory(tx, {
+        id: expense.id,
+        groupId: expense.groupId,
+        createdById: expense.createdById,
+        paidById: expense.paidById,
+        currency: expense.currency,
+        amount: expense.amount,
+        title: expense.title,
+        category: expense.category,
+        splitType: expense.splitType,
+        customRate: decimalToNumber(expense.customRate),
+        participantIds: expense.splits.map((split) => split.userId),
+      })
 
-    await tx.group.update({ where: { id: groupId }, data: { updatedAt: new Date() } })
-    // Cash settlements are created after the expense itself, so return a fresh
-    // aggregate from the same transaction instead of the pre-settlement snapshot.
-    return tx.expense.findUniqueOrThrow({
-      where: { id: expense.id },
-      include: expenseInclude,
-    })
+      await tx.group.update({ where: { id: groupId }, data: { updatedAt: new Date() } })
+      // Cash settlements are created after the expense itself, so return a fresh
+      // aggregate from the same transaction instead of the pre-settlement snapshot.
+      const result = await tx.expense.findUniqueOrThrow({
+        where: { id: expense.id },
+        include: expenseInclude,
+      })
+      return { result, resourceId: expense.id }
+    },
+    load: (tx, resourceId) =>
+      tx.expense.findUnique({
+        where: { id: resourceId },
+        include: expenseInclude,
+      }),
   })
 }
 

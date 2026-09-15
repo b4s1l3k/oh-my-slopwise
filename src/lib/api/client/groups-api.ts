@@ -2,7 +2,11 @@ import type {
   ApiOperationRequest,
   ApiOperationResponse,
 } from "@contract/v1"
-import { apiRequest, type ApiCallOptions } from "@/lib/api/client/http-client"
+import {
+  apiRequest,
+  idempotentApiRequest,
+  type ApiCallOptions,
+} from "@/lib/api/client/http-client"
 
 function pathSegment(value: string): string {
   return encodeURIComponent(value)
@@ -27,7 +31,7 @@ export const groupsApi = {
     command: ApiOperationRequest<"createGroupV1">,
     options?: ApiCallOptions
   ) =>
-    apiRequest<ApiOperationResponse<"createGroupV1", 201>>("/groups", {
+    idempotentApiRequest<ApiOperationResponse<"createGroupV1", 201>>("/groups", {
       ...options,
       method: "POST",
       body: command,

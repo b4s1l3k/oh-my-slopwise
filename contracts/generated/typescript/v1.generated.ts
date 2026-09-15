@@ -1045,6 +1045,8 @@ export interface components {
     parameters: {
         IdPath: components["schemas"]["OpaqueId"];
         TokenPath: string;
+        /** @description Recommended for create commands. Reusing the key with the same request within 24 hours returns the original resource; a different request returns 409. */
+        IdempotencyKeyHeader: string;
     };
     requestBodies: never;
     headers: never;
@@ -1229,7 +1231,10 @@ export interface operations {
     createFeedbackV1: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Recommended for create commands. Reusing the key with the same request within 24 hours returns the original resource; a different request returns 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1248,7 +1253,9 @@ export interface operations {
                     "application/json": components["schemas"]["FeedbackResponse"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalServerError"];
         };
@@ -1282,7 +1289,10 @@ export interface operations {
     createGroupV1: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Recommended for create commands. Reusing the key with the same request within 24 hours returns the original resource; a different request returns 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1301,8 +1311,10 @@ export interface operations {
                     "application/json": components["schemas"]["GroupResponse"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalServerError"];
         };
@@ -1460,7 +1472,10 @@ export interface operations {
     createExpenseV1: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Recommended for create commands. Reusing the key with the same request within 24 hours returns the original resource; a different request returns 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKeyHeader"];
+            };
             path: {
                 id: components["parameters"]["IdPath"];
             };
@@ -1481,6 +1496,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpenseResponse"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -1722,7 +1738,10 @@ export interface operations {
     createSettlementV1: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Recommended for create commands. Reusing the key with the same request within 24 hours returns the original resource; a different request returns 409. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1741,6 +1760,7 @@ export interface operations {
                     "application/json": components["schemas"]["SettlementResponse"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

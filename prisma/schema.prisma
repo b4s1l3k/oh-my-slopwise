@@ -38,6 +38,7 @@ model User {
   statisticCurrencies UserStatisticCurrency[]
   statisticMoney      UserStatisticMoney[]
   groupPositions      GroupMemberPosition[]
+  idempotencyRecords  IdempotencyRecord[]
 
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_name_trgm_idx")
   @@map("users")
@@ -222,6 +223,33 @@ enum SplitType {
   EQUAL
   EXACT
   PERCENTAGE
+}
+
+enum IdempotencyOperation {
+  CREATE_GROUP
+  CREATE_EXPENSE
+  CREATE_SETTLEMENT
+  CREATE_FEEDBACK
+}
+
+// Deduplicates retried create commands. The record is committed atomically
+// with the created resource; expired records are pruned on the principal's
+// next idempotent command and are also suitable for a scheduled cleanup job.
+model IdempotencyRecord {
+  id          String               @id @default(cuid())
+  principalId String
+  operation   IdempotencyOperation
+  key         String               @db.VarChar(128)
+  requestHash String               @db.Char(64)
+  resourceId  String
+  createdAt   DateTime             @default(now()) @db.Timestamptz(3)
+  expiresAt   DateTime             @db.Timestamptz(3)
+
+  principal User @relation(fields: [principalId], references: [id], onDelete: Cascade)
+
+  @@unique([principalId, operation, key])
+  @@index([principalId, expiresAt])
+  @@map("idempotency_records")
 }
 
 model ExpenseSplit {

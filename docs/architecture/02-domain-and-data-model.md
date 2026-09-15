@@ -30,9 +30,17 @@ erDiagram
     User ||--o{ GroupMemberPosition : owns
     Group ||--o{ GroupMemberPosition : projects
     User ||--o{ Feedback : submits
+    User ||--o{ IdempotencyRecord : owns
 ```
 
 `Settlement.groupId`, `ActivityLog.groupId` и все финансовые `amountBase` обязательны. Deferred constraint triggers требуют 1..100 splits и точное равенство original/base сумм splits соответствующим суммам expense к моменту commit. `ExchangeRate` является самостоятельным справочником-кэшем и не связан внешним ключом с расходом: применённый результат пересчёта фиксируется в `amountBase`.
+
+`IdempotencyRecord` хранит scope `(principalId, operation, key)`, SHA-256 canonical request,
+ID созданного ресурса и срок жизни 24 часа. Запись создаётся атомарно с group, expense,
+manual settlement или feedback. Повтор с тем же payload возвращает исходный ресурс,
+а повтор ключа с другим payload отклоняется. Удаление user каскадно удаляет его записи;
+просроченные записи очищаются bounded batches при следующих идемпотентных командах
+этого user, причём повторно используемый просроченный ключ удаляется всегда.
 
 ## Сущности
 

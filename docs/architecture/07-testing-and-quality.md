@@ -121,6 +121,7 @@ DB-интеграционные файлы регистрируют сценар
 | `persistence.integration.test.ts` | Cross-service persistence, cascades, lifetime facts |
 | `persistence-atomicity.integration.test.ts` | Rollback и отсутствие частичных side effects |
 | `persistence-concurrency.integration.test.ts` | Serializable conflicts, retry и idempotency |
+| `idempotency.integration.test.ts` | Replay, payload conflict, expiry и concurrent deduplication create-команд со всеми side effects |
 | `persistence-constraints.integration.test.ts` | FK/unique/check/deferred invariants, financial identity и cascades |
 | `persistence-schema.integration.test.ts` | Storage types, indexes, triggers и rebuild functions |
 | `persistence-projections.integration.test.ts` | Parity balance/statistic projections и их атомарный rebuild |

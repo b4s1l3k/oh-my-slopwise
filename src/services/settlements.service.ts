@@ -9,75 +9,94 @@ import {
 import type { CreateSettlementInput } from "@/lib/validations/settlement"
 import { recordSettlementHistory } from "@/services/statistics-history.service"
 import { decodeDateCursor, encodeDateCursor } from "@/lib/date-cursor"
+import { runIdempotentCommand } from "@/lib/idempotent-command"
 
 const SETTLEMENT_PAGE_SIZE = 50
 
 export async function createSettlement(
   userId: string,
-  data: CreateSettlementInput
+  data: CreateSettlementInput,
+  idempotencyKey?: string
 ) {
-  if (data.toUserId === userId) throw new Error("SELF_SETTLEMENT")
-  const settlementDate = parseCalendarDate(data.date)
+  return runIdempotentCommand({
+    principalId: userId,
+    operation: "CREATE_SETTLEMENT",
+    key: idempotencyKey,
+    request: data,
+    prepare: async () => {
+      if (data.toUserId === userId) throw new Error("SELF_SETTLEMENT")
+      const settlementDate = parseCalendarDate(data.date)
+      const group = await prisma.group.findUnique({
+        where: { id: data.groupId },
+        include: { members: { where: { isActive: true }, select: { userId: true } } },
+      })
+      if (!group) throw new Error("NOT_FOUND")
+      const memberIds = new Set(group.members.map((m) => m.userId))
+      if (!memberIds.has(userId)) throw new Error("FORBIDDEN")
+      if (!memberIds.has(data.toUserId)) throw new Error("RECIPIENT_NOT_MEMBER")
+      return settlementDate
+    },
+    execute: async (tx, settlementDate) => {
+      await lockGroupInvariants(tx, data.groupId)
+      const txGroup = await tx.group.findUnique({
+        where: { id: data.groupId },
+        include: { members: { where: { isActive: true }, select: { userId: true } } },
+      })
+      if (!txGroup) throw new Error("NOT_FOUND")
+      const txMemberIds = new Set(txGroup.members.map((member) => member.userId))
+      if (!txMemberIds.has(userId)) throw new Error("FORBIDDEN")
+      if (!txMemberIds.has(data.toUserId)) throw new Error("RECIPIENT_NOT_MEMBER")
 
-  const group = await prisma.group.findUnique({
-    where: { id: data.groupId },
-    include: { members: { where: { isActive: true }, select: { userId: true } } },
-  })
-  if (!group) throw new Error("NOT_FOUND")
+      // Debt check inside the transaction prevents A1 race (two concurrent settlements exceeding debt)
+      const outstanding = await getOutstandingDebt(data.groupId, userId, data.toUserId, tx)
+      if (outstanding <= 0) throw new Error("NO_DEBT")
+      if (data.amount > outstanding) throw new Error("AMOUNT_EXCEEDS_DEBT")
 
-  const memberIds = new Set(group.members.map((m) => m.userId))
-  if (!memberIds.has(userId)) throw new Error("FORBIDDEN")
-  if (!memberIds.has(data.toUserId)) throw new Error("RECIPIENT_NOT_MEMBER")
+      const settlement = await tx.settlement.create({
+        data: {
+          groupId: data.groupId,
+          fromUserId: userId,
+          toUserId: data.toUserId,
+          amount: data.amount,
+          currency: txGroup.currency, // расчёт всегда в валюте расчёта группы
+          amountBase: data.amount, // уже в валюте расчёта
+          date: settlementDate,
+          notes: data.notes,
+        },
+        include: {
+          fromUser: { select: { id: true, name: true, avatarUrl: true } },
+          toUser: { select: { id: true, name: true, avatarUrl: true } },
+        },
+      })
 
-  return runSerializableTransaction(async (tx) => {
-    await lockGroupInvariants(tx, data.groupId)
-    const txGroup = await tx.group.findUnique({
-      where: { id: data.groupId },
-      include: { members: { where: { isActive: true }, select: { userId: true } } },
-    })
-    if (!txGroup) throw new Error("NOT_FOUND")
-    const txMemberIds = new Set(txGroup.members.map((member) => member.userId))
-    if (!txMemberIds.has(userId)) throw new Error("FORBIDDEN")
-    if (!txMemberIds.has(data.toUserId)) throw new Error("RECIPIENT_NOT_MEMBER")
+      await tx.activityLog.create({
+        data: {
+          groupId: data.groupId,
+          actorId: userId,
+          type: "SETTLEMENT_CREATED",
+          entityType: "settlement",
+          entityId: settlement.id,
+          metadata: {
+            amount: data.amount,
+            currency: txGroup.currency,
+            toUserName: settlement.toUser.name,
+          },
+        },
+      })
 
-    // Debt check inside the transaction prevents A1 race (two concurrent settlements exceeding debt)
-    const outstanding = await getOutstandingDebt(data.groupId, userId, data.toUserId, tx)
-    if (outstanding <= 0) throw new Error("NO_DEBT")
-    if (data.amount > outstanding) throw new Error("AMOUNT_EXCEEDS_DEBT")
+      await recordSettlementHistory(tx, settlement)
+      await tx.group.update({ where: { id: data.groupId }, data: { updatedAt: new Date() } })
 
-    const settlement = await tx.settlement.create({
-      data: {
-        groupId: data.groupId,
-        fromUserId: userId,
-        toUserId: data.toUserId,
-        amount: data.amount,
-        currency: txGroup.currency, // расчёт всегда в валюте расчёта группы
-        amountBase: data.amount, // уже в валюте расчёта
-        date: settlementDate,
-        notes: data.notes,
-      },
-      include: {
-        fromUser: { select: { id: true, name: true, avatarUrl: true } },
-        toUser: { select: { id: true, name: true, avatarUrl: true } },
-      },
-    })
-
-    await tx.activityLog.create({
-      data: {
-        groupId: data.groupId,
-        actorId: userId,
-        type: "SETTLEMENT_CREATED",
-        entityType: "settlement",
-        entityId: settlement.id,
-        metadata: { amount: data.amount, currency: txGroup.currency, toUserName: settlement.toUser.name },
-      },
-    })
-
-    await recordSettlementHistory(tx, settlement)
-
-    await tx.group.update({ where: { id: data.groupId }, data: { updatedAt: new Date() } })
-
-    return settlement
+      return { result: settlement, resourceId: settlement.id }
+    },
+    load: (tx, resourceId) =>
+      tx.settlement.findUnique({
+        where: { id: resourceId },
+        include: {
+          fromUser: { select: { id: true, name: true, avatarUrl: true } },
+          toUser: { select: { id: true, name: true, avatarUrl: true } },
+        },
+      }),
   })
 }
 

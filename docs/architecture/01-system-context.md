@@ -136,12 +136,12 @@ sequenceDiagram
     participant S as Service
     participant DB as PostgreSQL transaction
 
-    B->>R: POST/PATCH/DELETE + JSON
+    B->>R: POST/PATCH/DELETE + JSON (+ Idempotency-Key для create)
     R->>R: auth + Zod safeParse
     R->>S: command + authenticated userId
     S->>DB: begin
     S->>DB: повторная проверка прав/состояния
-    S->>DB: изменение доменной сущности
+    S->>DB: изменение доменной сущности + idempotency record для create
     S->>DB: activity и/или statistic facts, если предусмотрены
     S->>DB: commit
     S-->>R: result

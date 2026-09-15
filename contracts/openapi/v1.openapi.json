@@ -213,6 +213,9 @@
         "operationId": "createFeedbackV1",
         "tags": ["Feedback"],
         "summary": "Submit feedback",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKeyHeader" }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -230,7 +233,9 @@
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
           "422": { "$ref": "#/components/responses/UnprocessableEntity" },
           "500": { "$ref": "#/components/responses/InternalServerError" }
         }
@@ -272,6 +277,9 @@
         "operationId": "createGroupV1",
         "tags": ["Groups"],
         "summary": "Create a group and memberships",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKeyHeader" }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -289,8 +297,10 @@
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
           "422": { "$ref": "#/components/responses/UnprocessableEntity" },
           "500": { "$ref": "#/components/responses/InternalServerError" }
         }
@@ -443,6 +453,9 @@
         "operationId": "createExpenseV1",
         "tags": ["Expenses"],
         "summary": "Create an expense and optional linked cash settlements",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKeyHeader" }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -460,6 +473,7 @@
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
@@ -694,6 +708,9 @@
         "operationId": "createSettlementV1",
         "tags": ["Settlements"],
         "summary": "Record a settlement from the current user",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKeyHeader" }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -711,6 +728,7 @@
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
@@ -898,6 +916,18 @@
         "schema": {
           "type": "string",
           "minLength": 1
+        }
+      },
+      "IdempotencyKeyHeader": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Recommended for create commands. Reusing the key with the same request within 24 hours returns the original resource; a different request returns 409.",
+        "schema": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
         }
       }
     },

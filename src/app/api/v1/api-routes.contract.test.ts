@@ -205,11 +205,14 @@ const settlementDto = {
 function request(
   path: string,
   method = "GET",
-  body?: unknown
+  body?: unknown,
+  headers?: HeadersInit
 ): Request {
+  const requestHeaders = new Headers(headers)
+  if (body !== undefined) requestHeaders.set("Content-Type", "application/json")
   return new Request(`http://localhost${path}`, {
     method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers: requestHeaders,
     body: body === undefined ? undefined : JSON.stringify(body),
   })
 }
@@ -424,7 +427,12 @@ describe("/api/v1 route handler success contracts", () => {
       "listGroupsV1"
     )
     await expectJson(
-      await groupsRoute.POST(request("/api/v1/groups", "POST", groupCommand)),
+      await groupsRoute.POST(request(
+        "/api/v1/groups",
+        "POST",
+        groupCommand,
+        { "Idempotency-Key": "group-command-01" }
+      )),
       201,
       { group: redactedGroup },
       "createGroupV1"
@@ -469,7 +477,11 @@ describe("/api/v1 route handler success contracts", () => {
       "removeGroupMemberV1"
     )
 
-    expect(mocks.groups.createGroup).toHaveBeenCalledWith("user-1", groupCommand)
+    expect(mocks.groups.createGroup).toHaveBeenCalledWith(
+      "user-1",
+      groupCommand,
+      "group-command-01"
+    )
     expect(mocks.groups.getUserGroups).toHaveBeenCalledWith("user-1", "cursor-1")
     expect(mocks.groups.addMember).toHaveBeenCalledWith("group-1", "user-1", "user-2")
     expect(mocks.groups.removeMember).toHaveBeenCalledWith("group-1", "user-1", "user-2")
@@ -495,7 +507,12 @@ describe("/api/v1 route handler success contracts", () => {
     )
     await expectJson(
       await groupExpensesRoute.POST(
-        request("/api/v1/groups/group-1/expenses", "POST", expenseCommand),
+        request(
+          "/api/v1/groups/group-1/expenses",
+          "POST",
+          expenseCommand,
+          { "Idempotency-Key": "expense-command-01" }
+        ),
         groupContext
       ),
       201,
@@ -535,7 +552,8 @@ describe("/api/v1 route handler success contracts", () => {
     expect(mocks.expenses.createExpense).toHaveBeenCalledWith(
       "group-1",
       "user-1",
-      expenseCommand
+      expenseCommand,
+      "expense-command-01"
     )
   })
 
@@ -560,11 +578,21 @@ describe("/api/v1 route handler success contracts", () => {
     await expectJson(await balanceOverviewRoute.GET(), 200, overview, "getBalanceOverviewV1")
     await expectJson(
       await settlementsRoute.POST(
-        request("/api/v1/settlements", "POST", settlementCommand)
+        request(
+          "/api/v1/settlements",
+          "POST",
+          settlementCommand,
+          { "Idempotency-Key": "settlement-command-01" }
+        )
       ),
       201,
       { settlement: settlementDto },
       "createSettlementV1"
+    )
+    expect(mocks.settlements.createSettlement).toHaveBeenCalledWith(
+      "user-1",
+      settlementCommand,
+      "settlement-command-01"
     )
     await expectJson(
       await groupSettlementsRoute.GET(
@@ -842,11 +870,21 @@ describe("/api/v1 route handler success contracts", () => {
 
     await expectJson(
       await feedbackRoute.POST(
-        request("/api/v1/feedback", "POST", { message: "Useful feedback" })
+        request(
+          "/api/v1/feedback",
+          "POST",
+          { message: "Useful feedback" },
+          { "Idempotency-Key": "feedback-command-01" }
+        )
       ),
       201,
       { feedback },
       "createFeedbackV1"
+    )
+    expect(mocks.feedback.createFeedback).toHaveBeenCalledWith(
+      "user-1",
+      "Useful feedback",
+      "feedback-command-01"
     )
     mocks.auth.mockResolvedValue({ user: { id: "admin", role: "ADMIN" } })
     await expectJson(
@@ -928,6 +966,26 @@ describe("/api/v1 route handler error contracts", () => {
       "removeGroupMemberV1"
     )
     expect(mocks.groups.removeMember).not.toHaveBeenCalled()
+  })
+
+  it("rejects an invalid idempotency key before executing a create command", async () => {
+    await expectJson(
+      await groupsRoute.POST(request(
+        "/api/v1/groups",
+        "POST",
+        groupCommand,
+        { "Idempotency-Key": "short" }
+      )),
+      400,
+      {
+        error: {
+          code: "INVALID_IDEMPOTENCY_KEY",
+          message: "Idempotency-Key должен содержать от 8 до 128 латинских букв, цифр или символов . _ : -",
+        },
+      },
+      "createGroupV1"
+    )
+    expect(mocks.groups.createGroup).not.toHaveBeenCalled()
   })
 
   it("returns the Zod flattened envelope for invalid JSON commands", async () => {

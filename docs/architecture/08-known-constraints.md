@@ -13,7 +13,6 @@
 | CI residual gaps | Typecheck, contract, golden, coverage, build и standalone E2E блокируют publish; нет lint, dependency/security scan, Docker startup и migrator recovery smoke | Ошибка упаковки image, supply-chain или entrypoint может проявиться после публикации |
 | Application admin | Роль выводится из `ADMIN_EMAIL` при login | Регистрация незанятого admin email и старый JWT создают неочевидный access lifecycle |
 | Observability | Есть liveness/readiness и client request ID, но нет structured request logs, metrics, tracing, alerting и SLO | Production failure трудно расследовать и измерять |
-| Idempotency | Create endpoints не принимают idempotency key | Network/mobile retry может продублировать group, expense, manual settlement или feedback |
 
 ### Средний приоритет
 
@@ -98,7 +97,6 @@ binary floating point. Ближайшие bottleneck:
 - account overview projection с отдельно сохранёнными totals и paginated
   counterparty balances;
 - typed application commands/results, domain errors и persistence ports;
-- idempotency records для create commands;
 - outbox для audit/analytics, только после ADR о consistency/freshness;
 - load tests и индексы, подтверждённые `EXPLAIN (ANALYZE, BUFFERS)`, а не
   добавленные предположительно.

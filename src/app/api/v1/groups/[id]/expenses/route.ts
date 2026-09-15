@@ -7,6 +7,7 @@ import {
   toExpensePageResponse,
   toExpenseResponse,
 } from "@/lib/api/v1/response-mappers"
+import { readIdempotencyKey } from "@/lib/idempotency-key"
 
 
 type Params = { params: Promise<{ id: string }> }
@@ -39,7 +40,12 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   try {
-    const expense = await expensesService.createExpense(groupId, session.user.id, parsed.data)
+    const expense = await expensesService.createExpense(
+      groupId,
+      session.user.id,
+      parsed.data,
+      readIdempotencyKey(req)
+    )
     return NextResponse.json(toExpenseResponse(expense), { status: 201 })
   } catch (e) {
     return handleServiceError(e)

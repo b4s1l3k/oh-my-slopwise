@@ -15,6 +15,7 @@ const httpMethods = ["get", "post", "put", "patch", "delete", "options", "head"]
 type HttpMethod = (typeof httpMethods)[number]
 type OpenApiOperation = {
   operationId?: string
+  parameters?: Array<{ $ref?: string }>
   responses?: Record<string, unknown>
   security?: Array<Record<string, unknown>>
 }
@@ -144,6 +145,19 @@ describe("the canonical /api/v1 OpenAPI snapshot", () => {
   it("documents at least one response for every operation", () => {
     for (const { key, operation } of documented) {
       expect(Object.keys(operation.responses ?? {}), key).not.toHaveLength(0)
+    }
+  })
+
+  it("documents idempotency for every replay-safe create command", () => {
+    for (const path of [
+      "/api/v1/groups",
+      "/api/v1/groups/{id}/expenses",
+      "/api/v1/settlements",
+      "/api/v1/feedback",
+    ]) {
+      expect(document.paths?.[path]?.post?.parameters, path).toContainEqual({
+        $ref: "#/components/parameters/IdempotencyKeyHeader",
+      })
     }
   })
 

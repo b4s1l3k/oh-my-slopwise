@@ -83,6 +83,7 @@ React page/component
 - Основная core-логика располагается в `src/services`, но несколько простых routes выполняют persistence напрямую.
 - Членство и роль проверяются сервером, а для критических мутаций повторно проверяются внутри транзакции.
 - Там, где use case создаёт activity и/или lifetime facts, эти записи выполняются в той же транзакции; покрытие событий не является полным.
+- Web create-команды используют `Idempotency-Key`; resource, idempotency record и transactional side effects фиксируются атомарно, TTL ключа — 24 часа.
 - Source ledger состоит из расходов/splits/settlements, а текущие balances
   обслуживаются транзакционной, полностью rebuildable проекцией positions.
 - Полученные достижения и lifetime-факты сохраняются независимо от удаляемых групп и расходов.

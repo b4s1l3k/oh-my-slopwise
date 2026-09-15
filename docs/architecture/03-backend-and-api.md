@@ -323,10 +323,17 @@ transaction lock, что database invariants; это задаёт единый l
 permissions, debt amount, admin role, zero-balance deletion, invite state и
 settlement reset. Реальные E2E/DB race-сценарии фиксируют согласованное конечное
 состояние для invite create/revoke/accept, member add/remove, expense против
-member removal и settlement create/reset. Основные незакрытые concurrency cases:
+member removal и settlement create/reset.
 
-- POST operations не используют idempotency key, поэтому network retry способен продублировать group, expense, settlement или feedback;
-- FX lookup выполняется до финансовой transaction.
+Create group, expense, manual settlement и feedback принимают необязательный
+`Idempotency-Key` (8..128 символов из `[A-Za-z0-9._:-]`). Текущий web-клиент
+посылает его всегда и сохраняет тот же ключ после неоднозначной network/5xx-ошибки.
+Idempotency record, ресурс и все его activity/statistic side effects фиксируются
+одной transaction; scope ключа — `(principalId, operation, key)`, TTL — 24 часа.
+Повтор с тем же canonical payload возвращает исходный ресурс, с другим — HTTP 409.
+Header оставлен необязательным для обратной совместимости внешних v1-клиентов.
+
+Оставшийся concurrency case: FX lookup выполняется до финансовой transaction.
 
 ## Ошибки
 

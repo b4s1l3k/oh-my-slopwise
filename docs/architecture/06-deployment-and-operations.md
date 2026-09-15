@@ -136,7 +136,8 @@ flowchart TD
 - recovery/runbook и автоматический image smoke пока не описаны.
 
 Fresh-install baseline `20260915000000_initial_schema` содержит полную текущую
-схему. Она не содержит upgrade, cleanup или backfill старых данных.
+схему, включая `idempotency_records`. Она рассчитана на запуск с чистой БД и не
+содержит upgrade, cleanup или backfill старых данных.
 Безопасный checksum/advisory-lock runner сохранён для идемпотентного запуска
 нескольких container replicas; это эксплуатационная защита, а не legacy chain.
 Baseline выполняет `CREATE EXTENSION IF NOT EXISTS citext` и `pg_trgm`.

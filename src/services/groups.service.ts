@@ -9,6 +9,7 @@ import {
 import type { CreateGroupInput, UpdateGroupInput } from "@/lib/validations/group"
 import { MAX_GROUP_MEMBERS } from "@/lib/domain-limits"
 import { decodeInstantCursor, encodeInstantCursor } from "@/lib/instant-cursor"
+import { runIdempotentCommand } from "@/lib/idempotent-command"
 
 const GROUP_PAGE_SIZE = 30
 
@@ -140,31 +141,48 @@ export async function getGroup(groupId: string, userId: string) {
   }
 }
 
-export async function createGroup(userId: string, data: CreateGroupInput) {
-  const memberIds = [...new Set([userId, ...data.memberIds])]
-  if (memberIds.length > MAX_GROUP_MEMBERS) throw new Error("GROUP_MEMBER_LIMIT")
-  const existingUsers = await prisma.user.count({ where: { id: { in: memberIds } } })
-  if (existingUsers !== memberIds.length) throw new Error("USER_NOT_FOUND")
-
-  return runSerializableTransaction(async (tx) => {
-    const group = await tx.group.create({
-      data: {
-        name: data.name,
-        description: data.description,
-        type: data.type,
-        currency: data.currency,
-        createdById: userId,
-        members: {
-          create: memberIds.map((id) => ({
-            userId: id,
-            role: id === userId ? "ADMIN" : "MEMBER",
-          })),
+export async function createGroup(
+  userId: string,
+  data: CreateGroupInput,
+  idempotencyKey?: string
+) {
+  return runIdempotentCommand({
+    principalId: userId,
+    operation: "CREATE_GROUP",
+    key: idempotencyKey,
+    request: data,
+    prepare: async () => {
+      const memberIds = [...new Set([userId, ...data.memberIds])]
+      if (memberIds.length > MAX_GROUP_MEMBERS) throw new Error("GROUP_MEMBER_LIMIT")
+      const existingUsers = await prisma.user.count({ where: { id: { in: memberIds } } })
+      if (existingUsers !== memberIds.length) throw new Error("USER_NOT_FOUND")
+      return memberIds
+    },
+    execute: async (tx, memberIds) => {
+      const group = await tx.group.create({
+        data: {
+          name: data.name,
+          description: data.description,
+          type: data.type,
+          currency: data.currency,
+          createdById: userId,
+          members: {
+            create: memberIds.map((id) => ({
+              userId: id,
+              role: id === userId ? "ADMIN" : "MEMBER",
+            })),
+          },
         },
-      },
-      include: { members: { select: memberSelect } },
-    })
-    await recordGroupCreated(tx, group, memberIds)
-    return group
+        include: { members: { select: memberSelect } },
+      })
+      await recordGroupCreated(tx, group, memberIds)
+      return { result: group, resourceId: group.id }
+    },
+    load: (tx, resourceId) =>
+      tx.group.findUnique({
+        where: { id: resourceId },
+        include: { members: { select: memberSelect } },
+      }),
   })
 }
 

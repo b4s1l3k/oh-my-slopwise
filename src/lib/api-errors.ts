@@ -53,6 +53,18 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   },
   INVALID_CURSOR: { status: 400, message: "Некорректный курсор пагинации" },
   INVALID_PAGE_SIZE: { status: 400, message: "Некорректный размер страницы" },
+  INVALID_IDEMPOTENCY_KEY: {
+    status: 400,
+    message: "Idempotency-Key должен содержать от 8 до 128 латинских букв, цифр или символов . _ : -",
+  },
+  IDEMPOTENCY_KEY_REUSED: {
+    status: 409,
+    message: "Этот Idempotency-Key уже использован с другим запросом",
+  },
+  IDEMPOTENCY_RESULT_UNAVAILABLE: {
+    status: 409,
+    message: "Результат исходного запроса больше недоступен",
+  },
   TRANSACTION_CONFLICT: {
     status: 409,
     message: "Данные изменились одновременно — повторите действие",

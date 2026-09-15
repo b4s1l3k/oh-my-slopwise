@@ -116,6 +116,9 @@ components не импортируют эти clients напрямую: их е�
 hooks из `src/hooks/api`.
 HTTP client централизует cookie credentials, optional bearer token, JSON encode/decode,
 `204`/`205`, `AbortSignal`, request ID и нормализацию transport-ошибок в `ApiError`.
+Domain clients для create group/expense/manual settlement/feedback используют его
+idempotent-вариант: UUID ключ привязан к method/path/canonical body, удаляется после
+успеха или определённой 4xx-ошибки и сохраняется для повтора после network/5xx/408/425/429.
 Hooks централизуют query/mutation options, проброс cancellation signal, pagination и
 cache invalidation. `query-keys.ts` является единственным каталогом ключей, а
 `invalidation.ts` описывает зависимости записей от cached projections. Option factories

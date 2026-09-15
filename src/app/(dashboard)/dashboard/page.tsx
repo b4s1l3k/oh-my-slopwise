@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { QueryErrorState } from "@/components/ui/query-error-state"
-import { Users, TrendingUp, TrendingDown, Plus } from "lucide-react"
+import { Loader2, Users, TrendingUp, TrendingDown, Plus } from "lucide-react"
 import { useGroups } from "@/hooks/api/use-groups"
 import { useOverviewBalances } from "@/hooks/api/use-settlements"
 
@@ -24,6 +24,10 @@ export default function DashboardPage() {
     isLoading: loadingGroups,
     isError: groupsError,
     refetch: refetchGroups,
+    hasNextPage: hasNextGroupPage,
+    fetchNextPage: fetchNextGroupPage,
+    isFetchingNextPage: isFetchingNextGroupPage,
+    isFetchNextPageError: isFetchNextGroupPageError,
   } = useGroups()
 
   const totals = overview?.totals ?? []
@@ -138,7 +142,7 @@ export default function DashboardPage() {
               <Skeleton key={i} className="h-20 w-full" />
             ))}
           </div>
-        ) : groupsError ? (
+        ) : groupsError && groupsData == null ? (
           <QueryErrorState
             title="Не удалось загрузить группы"
             onRetry={() => void refetchGroups()}
@@ -157,27 +161,50 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {groupsData?.map(
-              (group) => (
-                <Link key={group.id} href={`/groups/${group.id}`}>
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-semibold">{group.name}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {Array.isArray(group.members) ? group.members.length : 0} участников
-                          </p>
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {groupsData?.map(
+                (group) => (
+                  <Link key={group.id} href={`/groups/${group.id}`}>
+                    <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-semibold">{group.name}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {Array.isArray(group.members) ? group.members.length : 0} участников
+                            </p>
+                          </div>
+                          <Badge variant="secondary" className="text-xs">
+                            {groupTypeLabel(group.type)}
+                          </Badge>
                         </div>
-                        <Badge variant="secondary" className="text-xs">
-                          {groupTypeLabel(group.type)}
-                        </Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              )
+                      </CardContent>
+                    </Card>
+                  </Link>
+                )
+              )}
+            </div>
+            {hasNextGroupPage && (
+              <div className="flex flex-col items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchNextGroupPage()}
+                  disabled={isFetchingNextGroupPage}
+                >
+                  {isFetchingNextGroupPage && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {isFetchingNextGroupPage ? "Загружаем…" : "Показать ещё"}
+                </Button>
+                {isFetchNextGroupPageError && (
+                  <p className="text-xs text-destructive">
+                    Не удалось загрузить группы. Попробуйте ещё раз.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}

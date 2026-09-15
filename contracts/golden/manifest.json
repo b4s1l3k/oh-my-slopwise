@@ -14,6 +14,7 @@
     "fixtures/effective-history-boundaries.json",
     "fixtures/auth-errors.json",
     "fixtures/service-error-security-matrix.json",
-    "fixtures/transport-validation-boundaries.json"
+    "fixtures/transport-validation-boundaries.json",
+    "fixtures/activity-pagination.json"
   ]
 }

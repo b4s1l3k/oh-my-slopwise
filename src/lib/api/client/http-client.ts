@@ -1,7 +1,10 @@
 import { ApiError } from "@/lib/api/client/api-error"
+import { canonicalJson } from "@/lib/canonical-json"
+import { IDEMPOTENCY_KEY_HEADER } from "@/lib/idempotency-key"
 
 const DEFAULT_API_BASE_URL = "/api/v1"
 const REQUEST_ID_HEADER = "X-Request-ID"
+const pendingIdempotencyKeys = new Map<string, string>()
 
 type ApiErrorBody = {
   error?: string | {
@@ -36,6 +39,11 @@ function apiUrl(path: string): string {
 function newRequestId(): string {
   return globalThis.crypto?.randomUUID?.() ??
     `request-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
+
+function newIdempotencyKey(): string {
+  return globalThis.crypto?.randomUUID?.() ??
+    `command-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 }
 
 function isAbortError(error: unknown, signal: AbortSignal | undefined): boolean {
@@ -157,4 +165,33 @@ export async function apiRequest<T>(
     )
   }
   return parsedBody as T
+}
+
+export async function idempotentApiRequest<T>(
+  path: string,
+  options: ApiRequestOptions
+): Promise<T> {
+  const fingerprint = `${options.method ?? "POST"} ${path} ${canonicalJson(options.body)}`
+  const key = pendingIdempotencyKeys.get(fingerprint) ?? newIdempotencyKey()
+  pendingIdempotencyKeys.set(fingerprint, key)
+
+  const headers = new Headers(options.headers)
+  headers.set(IDEMPOTENCY_KEY_HEADER, key)
+
+  try {
+    const result = await apiRequest<T>(path, { ...options, headers })
+    pendingIdempotencyKeys.delete(fingerprint)
+    return result
+  } catch (error) {
+    const retryableHttpStatus = error instanceof ApiError && [408, 425, 429].includes(error.status)
+    if (
+      error instanceof ApiError &&
+      error.status >= 400 &&
+      error.status < 500 &&
+      !retryableHttpStatus
+    ) {
+      pendingIdempotencyKeys.delete(fingerprint)
+    }
+    throw error
+  }
 }

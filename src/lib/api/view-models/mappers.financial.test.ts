@@ -123,8 +123,8 @@ describe("financial DTO to view-model compatibility", () => {
     expect(result).not.toBe(dto)
   })
 
-  it("maps expense pages and keeps pagination fields exact", () => {
-    const dto = { expenses: [expenseDto()], total: 101, hasNext: true }
+  it("maps expense pages and keeps the opaque cursor exact", () => {
+    const dto = { expenses: [expenseDto()], nextCursor: "opaque-cursor" }
     const result = mapExpensePageViewModel(dto)
 
     expect(result).toEqual(dto)
@@ -133,16 +133,16 @@ describe("financial DTO to view-model compatibility", () => {
     expect(result.expenses[0]).not.toBe(dto.expenses[0])
   })
 
-  it("maps nullable settlement references and nested users", () => {
+  it("maps optional expense references and nested users", () => {
     const dto: SettlementDto = {
       id: "settlement",
-      groupId: null,
+      groupId: "group",
       expenseId: null,
       fromUserId: "bob",
       toUserId: "alice",
       amount: 1,
       currency: "RUB",
-      amountBase: null,
+      amountBase: 1,
       date: timestamp,
       notes: null,
       createdAt: timestamp,

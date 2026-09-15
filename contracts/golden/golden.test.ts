@@ -85,6 +85,7 @@ describe("language-neutral golden compatibility suites", () => {
         "auth.projectSession",
         "auth.validateRegistration",
         "error.mapService",
+        "activity.page",
       ])
     )
   })
@@ -93,7 +94,7 @@ describe("language-neutral golden compatibility suites", () => {
     const result = await runGoldenSuites(suites, new LegacyGoldenAdapter())
     expect(result.failures, formatGoldenFailures(result.failures)).toEqual([])
     expect(result.passed).toBe(result.total)
-    expect(result.total).toBe(186)
+    expect(result.total).toBe(196)
   })
 
   it("the candidate process adapter uses the versioned JSON stdin/stdout protocol", async () => {

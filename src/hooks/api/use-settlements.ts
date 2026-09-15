@@ -37,16 +37,6 @@ export function groupBalancesQueryOptions(groupId: string) {
   })
 }
 
-export function groupSettlementsQueryOptions(groupId: string) {
-  return queryOptions({
-    queryKey: apiQueryKeys.settlements.group(groupId),
-    queryFn: async ({ signal }) => {
-      const response = await settlementsApi.getGroupSettlements(groupId, { signal })
-      return response.settlements.map(mapSettlementViewModel)
-    },
-  })
-}
-
 export function createSettlementMutationOptions(queryClient: QueryClient) {
   return mutationOptions({
     mutationFn: async (command: CreateSettlementCommand) => {
@@ -74,10 +64,6 @@ export function useOverviewBalances() {
 
 export function useGroupBalances(groupId: string) {
   return useQuery(groupBalancesQueryOptions(groupId))
-}
-
-export function useGroupSettlements(groupId: string) {
-  return useQuery(groupSettlementsQueryOptions(groupId))
 }
 
 export function useCreateSettlement() {

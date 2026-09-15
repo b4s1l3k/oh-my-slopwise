@@ -22,12 +22,12 @@
 | `npm run typecheck` | TypeScript strict typecheck без emit |
 | `npm run contract:check` | Generated TypeScript transport types байт-в-байт соответствуют OpenAPI |
 | `npm run test:contract` | OpenAPI/source parity и mocked HTTP route contract tests |
-| `npm run test:golden` | Schema/runner tests и 186 language-neutral vectors против legacy adapter |
+| `npm run test:golden` | Schema/runner tests и 196 language-neutral vectors против legacy adapter |
 | `npm run test:watch` | Интерактивный Vitest |
 | `npm run test:db` | Полный suite на `TEST_DATABASE_URL` с последовательным выполнением файлов |
 | `npm run test:coverage` | Полный DB suite на `TEST_DATABASE_URL` с V8 coverage |
-| `npm run test:e2e` | 225 HTTP/browser E2E на чистой локальной `splitwise_e2e` с `next dev` |
-| `npm run test:e2e:production` | Те же 225 E2E на чистой локальной `splitwise_e2e` с собранным `.next/standalone` |
+| `npm run test:e2e` | Полный HTTP/browser E2E-набор на чистой локальной `splitwise_e2e` с `next dev` |
+| `npm run test:e2e:production` | Тот же E2E-набор на чистой локальной `splitwise_e2e` с собранным `.next/standalone` |
 | `npm run test:e2e:candidate` | Тот же suite против внешнего replacement stack через язык-независимый fixture adapter |
 | `npm run test:e2e:headed` | Тот же E2E-контур с видимым Chrome |
 | `npm run test:e2e:ui` | Интерактивный Playwright UI |
@@ -54,32 +54,18 @@ standalone runtime**.
 - `npm run test:e2e` запускает локальный `next dev`;
 - `npm run test:e2e:production` запускает локальный `.next/standalone/server.js`.
 
-## Фактический результат повторной проверки
+## Полная проверка
 
-Snapshot: 13 сентября 2026 года, working tree на основе baseline `a93c9fc` с OpenAPI v1 contract.
+`npm run test:regression` последовательно запускает quality gate, DB integration
+и E2E на собранном standalone artifact. Coverage использует только защищённую
+`splitwise_test`, а E2E перед прогоном сбрасывает только `splitwise_e2e` и
+применяет fresh-install baseline. Guard запрещает application/production DB и
+имя без явного test-маркера.
 
-```text
-Fast run:   54 files passed, 14 skipped; 858 tests passed, 132 skipped
-Full run:   68 files passed; 990 tests passed
-Coverage:   92.37% statements; 86.25% branches; 96.56% functions; 95.19% lines
-Contract:   96 tests passed
-Golden:     9 runner/schema tests; 186/186 vectors with legacy adapter
-E2E dev:    72 spec files; 225/225 against local next dev
-E2E build:  72 spec files; 225/225 against local .next/standalone
-TypeScript: no errors
-Build:      passed
-```
-
-Полный DB-run выполнен на отдельной `splitwise_test` после применения всех 16
-миграций. Каждый из двух E2E-run самостоятельно сбросил локальную
-`splitwise_e2e` и применил те же 16 миграций. Первый прогон использовал
-локальный `next dev`, второй — локальный `.next/standalone/server.js` на
-`127.0.0.1:3100`; оба прошли в системном Google Chrome. Никакая удалённая или
-production-БД в проверке не использовалась. E2E helper копирует в standalone
-artifact и `.next/static`, и `public`; текущий Dockerfile копирует только
-`.next/static`. Поэтому локальный standalone E2E не доказывает наличие public
-assets внутри Docker image — для этого нужен отдельный image smoke test.
-Обычный `npm test` не подключается к БД и оставляет 132 DB-сценария skipped.
+Точные количества тестов и проценты покрытия не дублируются в документации:
+актуальный результат хранит CI, а thresholds — test configuration. Отдельный
+Docker image smoke всё ещё нужен для проверки упаковки image и custom migration
+entrypoint. Обычный `npm test` к БД не подключается.
 
 ## Быстрый контур
 
@@ -98,8 +84,8 @@ Unit и mocked tests покрывают:
 - отдельную pure simulation сброса расчётов.
 
 Отдельный HTTP contract suite напрямую вызывает все v1 route handlers с
-mocked auth/services/Prisma. Он фиксирует 32 success responses, единый 401 для
-31 защищённой операции, validation/error envelopes, route-specific 403/404,
+mocked auth/services/Prisma. Он фиксирует 34 success responses, единый 401 для
+32 защищённых операций, validation/error envelopes, route-specific 403/404,
 registration без session и явные response projections. Fixtures содержат
 полные resource shapes и проверяют, что persistence-only поля не попадают в
 JSON. Каждый успешный handler-response проходит JSON Schema из OpenAPI; coverage
@@ -107,8 +93,9 @@ JSON. Каждый успешный handler-response проходит JSON Schem
 примера роняет suite. Response objects закрыты для лишних полей на любом уровне.
 Request schemas сохраняют фактическую v1-семантику strip unknown fields.
 
-Golden-контур хранит 186 JSON-сценариев в `contracts/golden`: expense/splits/FX,
-balances/settlements, membership/dates, statistics/achievements и auth/errors.
+Golden-контур хранит 196 JSON-сценариев в `contracts/golden`: expense/splits/FX,
+balances/settlements, membership/dates, account activity pagination,
+statistics/achievements и auth/errors.
 Текущий manifest запускается через legacy TypeScript adapter. Runner технически
 умеет подключать будущий candidate process adapter и сравнивать результаты, но
 реальный backend-кандидат пока отсутствует; поэтому suite ещё не является
@@ -119,7 +106,7 @@ balances/settlements, membership/dates, statistics/achievements и auth/errors.
 
 ## DB-интеграционный контур
 
-Четырнадцать файлов регистрируют 132 сценария для реальных Prisma/service flows:
+DB-интеграционные файлы регистрируют сценарии для реальных Prisma/service flows:
 
 | Suite | Основной охват |
 |---|---|
@@ -134,7 +121,10 @@ balances/settlements, membership/dates, statistics/achievements и auth/errors.
 | `persistence.integration.test.ts` | Cross-service persistence, cascades, lifetime facts |
 | `persistence-atomicity.integration.test.ts` | Rollback и отсутствие частичных side effects |
 | `persistence-concurrency.integration.test.ts` | Serializable conflicts, retry и idempotency |
-| `persistence-constraints.integration.test.ts` | Реальные FK/unique/check constraints и cascades |
+| `idempotency.integration.test.ts` | Replay, payload conflict, expiry и concurrent deduplication create-команд со всеми side effects |
+| `persistence-constraints.integration.test.ts` | FK/unique/check/deferred invariants, financial identity и cascades |
+| `persistence-schema.integration.test.ts` | Storage types, indexes, triggers и rebuild functions |
+| `persistence-projections.integration.test.ts` | Parity balance/statistic projections и их атомарный rebuild |
 | `persistence-money.integration.test.ts` | Money/FX границы и точное minor-unit округление |
 | `statistics-history.integration.test.ts` | Lifetime history после edit/delete/group lifecycle |
 
@@ -151,7 +141,7 @@ Playwright-тесты разнесены по предметным файлам 
 - desktop/mobile navigation, role-based UI и отсутствие runtime console/page errors;
 - lifecycle групп, настройки, участников, выход/возврат и приглашения;
 - equal/exact/percentage splits, FX, округление, календарные даты и денежные границы;
-- создание, изменение, удаление и пагинацию расходов;
+- создание, изменение, удаление и cursor-пагинацию расходов и групп;
 - наличные и ручные расчёты, balances/overview, requisites и reset;
 - activity, lifetime statistics, achievements и однократную выдачу уведомлений;
 - profile, feedback, admin UI, authorization и validation envelopes реального HTTP;
@@ -163,6 +153,17 @@ Playwright-тесты разнесены по предметным файлам 
 - отзыв платёжных реквизитов после полного расчёта;
 - раскрытие percentage/FX/cash/notes деталей расхода;
 - полную anonymous/forbidden HTTP-матрицу и recovery приглашений.
+
+Отдельный `group-pagination.spec.ts` принудительно создаёт 31 membership с одним
+`updatedAt`, проверяет стабильный `id` tie-break на HTTP-границе, отсутствие дублей
+после «Показать ещё» и retry второй страницы без потери уже показанных карточек.
+Установка одинакового timestamp использует только guarded local `_e2e` database;
+сценарий явно пропускается против внешнего candidate backend.
+
+`activity-account-feed.spec.ts` фиксирует account-level cursor continuity,
+невидимость истории inactive membership и сетевую границу: один batch request и
+ноль `/groups/:id/activity`. Recovery-сценарий оставляет первые 50 событий на
+экране после исчерпания query retry и проверяет успешную ручную дозагрузку 51-го.
 
 `e2e/global-setup.ts` принимает только URL БД с маркером `_e2e`/`-e2e`, создаёт
 БД при отсутствии, выполняет `prisma migrate reset` и создаёт фиксированных
@@ -180,8 +181,8 @@ backend. Он передаёт versioned JSON fixture внешнему executabl
 flowchart TB
     e2e[Real HTTP + browser E2E\n225 scenarios]
     runtime[HTTP/OpenAPI schema contracts\n96 прошли]
-    golden[Language-neutral golden\n186 vectors]
-    db[DB service integration\n132 прошли]
+    golden[Language-neutral golden\n196 vectors]
+    db[DB service + schema integration]
     unit[Unit/mocked + mapper/guard]
 
     e2e --> runtime --> golden --> db --> unit
@@ -202,7 +203,9 @@ flowchart TB
 - Firefox/WebKit и настоящие mobile browser engines; сейчас E2E запускается в Chrome;
 - автоматический axe-аудит accessibility и visual regression;
 - exhaustive chaos/fallback states для продолжительных и частичных сетевых сбоев;
-- custom migration entrypoint, upgrade from older schemas и recovery paths;
+- автоматизированный custom migration entrypoint/image smoke и recovery paths;
+- upgrade from previous schema не поддерживается: текущая migration рассчитана
+  только на fresh installation;
 - Docker image smoke/startup/health;
 - нагрузочные конкурентные прогоны и длительный contention; базовые реальные race-сценарии покрыты;
 - CI deploy webhook failure/rollback;

@@ -1,13 +1,13 @@
 import { afterAll, describe, expect, it } from "vitest"
 import { prisma } from "@/lib/db"
-import { createExpense, updateExpense } from "@/services/expenses.service"
+import { createExpense, deleteExpense, updateExpense } from "@/services/expenses.service"
 import { addMember, createGroup, removeMember } from "@/services/groups.service"
 import { getOrCreateInvite, revokeInvite } from "@/services/invites.service"
 import { createSettlement, resetSettlements } from "@/services/settlements.service"
 import {
-  getCurrentUserStatistics,
   getHistoricalUserMoneyStatistics,
   getHistoricalUserStatistics,
+  getHistoricalUserStatisticsSnapshot,
 } from "@/services/statistics.service"
 
 const runDatabaseTests = process.env.RUN_DB_INTEGRATION_TESTS === "true"
@@ -83,6 +83,16 @@ describeDatabase("statistics history persistence invariants", () => {
       [admin.id, addedParticipant.id].sort()
     )
     expect(participantFacts.some((fact) => fact.userId === removedParticipant.id)).toBe(false)
+    const currencyFacts = await prisma.userStatisticFact.findMany({
+      where: { kind: "CURRENCY", reference: expense.id },
+      select: { userId: true, currency: true },
+      orderBy: { userId: "asc" },
+    })
+    expect(currencyFacts).toEqual(
+      [admin.id, addedParticipant.id]
+        .sort()
+        .map((userId) => ({ userId, currency: "RUB" }))
+    )
     expect((await getHistoricalUserStatistics(admin.id)).maxExpenseParticipants).toBe(3)
   })
 
@@ -106,7 +116,7 @@ describeDatabase("statistics history persistence invariants", () => {
       splits: [{ userId: admin.id }, { userId: member.id }],
     }
     const first = await createExpense(group.id, admin.id, { title: "First RUB", ...input })
-    await createExpense(group.id, admin.id, { title: "Second RUB", ...input })
+    const second = await createExpense(group.id, admin.id, { title: "Second RUB", ...input })
 
     await updateExpense(first.id, admin.id, {
       title: "First changed to USD",
@@ -118,10 +128,67 @@ describeDatabase("statistics history persistence invariants", () => {
 
     const facts = await prisma.userStatisticFact.findMany({
       where: { userId: admin.id, kind: "CURRENCY" },
-      select: { reference: true },
-      orderBy: { reference: "asc" },
+      select: { reference: true, currency: true },
+      orderBy: { currency: "asc" },
     })
-    expect(facts).toEqual([{ reference: "RUB" }, { reference: "USD" }])
+    expect(facts).toHaveLength(2)
+    expect(facts).toEqual(expect.arrayContaining([
+      { reference: first.id, currency: "USD" },
+      { reference: second.id, currency: "RUB" },
+    ]))
+    expect((await getHistoricalUserStatistics(admin.id)).currenciesUsed).toBe(2)
+  })
+
+  it("does not erase a deleted expense currency when an unrelated live expense is edited", async () => {
+    const admin = await createUser("Deleted currency history admin")
+    const group = await createGroup(admin.id, {
+      name: "Deleted currency history",
+      type: "OTHER",
+      currency: "RUB",
+      memberIds: [],
+    })
+    const deletedExpense = await createExpense(group.id, admin.id, {
+      title: "Historical USD",
+      amount: 100,
+      currency: "USD",
+      customRate: 100,
+      date: operationDate,
+      paidById: admin.id,
+      splitType: "EQUAL",
+      splits: [{ userId: admin.id }],
+    })
+    const liveExpense = await createExpense(group.id, admin.id, {
+      title: "Live RUB",
+      amount: 10_000,
+      currency: "RUB",
+      date: operationDate,
+      paidById: admin.id,
+      splitType: "EQUAL",
+      splits: [{ userId: admin.id }],
+    })
+
+    await deleteExpense(deletedExpense.id, admin.id)
+    await updateExpense(liveExpense.id, admin.id, {
+      title: "Live EUR",
+      amount: 100,
+      currency: "EUR",
+      customRate: 100,
+      date: operationDate,
+      paidById: admin.id,
+      splitType: "EQUAL",
+      splits: [{ userId: admin.id }],
+    })
+
+    const facts = await prisma.userStatisticFact.findMany({
+      where: { userId: admin.id, kind: "CURRENCY" },
+      select: { reference: true, currency: true },
+      orderBy: { currency: "asc" },
+    })
+    expect(facts).toHaveLength(2)
+    expect(facts).toEqual(expect.arrayContaining([
+      { reference: liveExpense.id, currency: "EUR" },
+      { reference: deletedExpense.id, currency: "USD" },
+    ]))
     expect((await getHistoricalUserStatistics(admin.id)).currenciesUsed).toBe(2)
   })
 
@@ -261,13 +328,12 @@ describeDatabase("statistics history persistence invariants", () => {
       date: operationDate,
     })
 
-    expect((await getCurrentUserStatistics(creditor.id)).settlementsReceived).toBe(1)
     await resetSettlements(group.id, debtor.id)
 
     expect(await prisma.settlement.count({ where: { id: settlement.id } })).toBe(0)
-    expect((await getCurrentUserStatistics(creditor.id)).settlementsReceived).toBe(0)
-    expect((await getHistoricalUserStatistics(creditor.id)).settlementsReceived).toBe(1)
-    expect(await getHistoricalUserMoneyStatistics(creditor.id)).toEqual({
+    const snapshot = await getHistoricalUserStatisticsSnapshot(creditor.id)
+    expect(snapshot.metrics.settlementsReceived).toBe(1)
+    expect(snapshot.money).toEqual({
       spent: [{ currency: "RUB", amount: 12_345 }],
       returned: [{ currency: "RUB", amount: 12_345 }],
     })
@@ -327,9 +393,37 @@ describeDatabase("statistics history persistence invariants", () => {
     expect(memberships.filter((membership) => membership.isActive)).toEqual([
       { userId: admin.id, isActive: true },
     ])
-    expect((await getCurrentUserStatistics(firstMember.id)).activeGroups).toBe(0)
     expect((await getHistoricalUserStatistics(firstMember.id)).activeGroups).toBe(1)
     expect((await getHistoricalUserStatistics(firstMember.id)).maxGroupMembers).toBe(3)
     expect((await getHistoricalUserStatistics(firstMember.id)).coupleGroups).toBe(1)
+  })
+
+  it("counts lifetime OTHER groups independently from the maximum active-group count", async () => {
+    const [trackedMember, homeAdmin, otherAdmin] = await Promise.all([
+      createUser("Sequential group member"),
+      createUser("Sequential home admin"),
+      createUser("Sequential other admin"),
+    ])
+    const homeGroup = await createGroup(homeAdmin.id, {
+      name: "Sequential home group",
+      type: "HOME",
+      currency: "RUB",
+      memberIds: [trackedMember.id],
+    })
+    await removeMember(homeGroup.id, trackedMember.id, trackedMember.id)
+    const otherGroup = await createGroup(otherAdmin.id, {
+      name: "Sequential other group",
+      type: "OTHER",
+      currency: "RUB",
+      memberIds: [trackedMember.id],
+    })
+    await removeMember(otherGroup.id, trackedMember.id, trackedMember.id)
+
+    expect(await getHistoricalUserStatistics(trackedMember.id)).toMatchObject({
+      activeGroups: 1,
+      homeGroups: 1,
+      otherGroups: 1,
+      groupTypesUsed: 2,
+    })
   })
 })

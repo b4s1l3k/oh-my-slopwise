@@ -5,6 +5,8 @@ import {
   recordInviteHistory,
 } from "@/services/statistics-history.service"
 import { runSerializableTransaction } from "@/lib/serializable-transaction"
+import { lockGroupInvariants } from "@/lib/group-invariant-lock"
+import { MAX_GROUP_MEMBERS } from "@/lib/domain-limits"
 
 async function assertMember(groupId: string, userId: string) {
   const member = await prisma.groupMember.findUnique({
@@ -82,7 +84,14 @@ export async function getInviteInfo(token: string, userId: string) {
 
 // Вступление в группу по токену
 export async function acceptInvite(token: string, userId: string) {
+  const existingInvite = await prisma.groupInvite.findUnique({
+    where: { token },
+    select: { groupId: true },
+  })
+  if (!existingInvite) throw new Error("INVITE_INVALID")
+
   return runSerializableTransaction(async (tx) => {
+    await lockGroupInvariants(tx, existingInvite.groupId)
     const invite = await tx.groupInvite.findUnique({ where: { token } })
     if (!invite || invite.revoked) throw new Error("INVITE_INVALID")
 
@@ -91,6 +100,10 @@ export async function acceptInvite(token: string, userId: string) {
     })
     // Уже активный участник — ничего не меняем и не засоряем историю
     if (existing?.isActive) return { groupId: invite.groupId }
+    const activeMemberCount = await tx.groupMember.count({
+      where: { groupId: invite.groupId, isActive: true },
+    })
+    if (activeMemberCount >= MAX_GROUP_MEMBERS) throw new Error("GROUP_MEMBER_LIMIT")
 
     const user = await tx.user.findUnique({ where: { id: userId }, select: { name: true } })
 

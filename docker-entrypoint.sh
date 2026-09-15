@@ -10,7 +10,7 @@ fi
 # such as sslmode, but remove the parameters used only by Prisma Client.
 MIGRATION_DATABASE_URL="$(node -e '
   const url = new URL(process.env.DATABASE_URL)
-  for (const key of ["schema", "connection_limit", "pool_timeout", "pgbouncer"]) {
+  for (const key of ["schema", "connection_limit", "pool_timeout", "socket_timeout", "pgbouncer"]) {
     url.searchParams.delete(key)
   }
   process.stdout.write(url.toString())
@@ -25,6 +25,11 @@ MIGRATION_SCHEMA="$(node -e '
 export PGOPTIONS="-c search_path=${MIGRATION_SCHEMA}"
 
 psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+BEGIN;
+SELECT pg_advisory_xact_lock(
+  hashtextextended('slopwise:migrations:' || current_schema(), 0)
+);
+
 CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
   "id" VARCHAR(36) PRIMARY KEY,
   "checksum" VARCHAR(64) NOT NULL,
@@ -35,6 +40,10 @@ CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
   "started_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   "applied_steps_count" INTEGER NOT NULL DEFAULT 0
 );
+CREATE UNIQUE INDEX IF NOT EXISTS "_prisma_migrations_finished_name_key"
+  ON "_prisma_migrations" ("migration_name")
+  WHERE "finished_at" IS NOT NULL AND "rolled_back_at" IS NULL;
+COMMIT;
 SQL
 
 for migration_file in /app/prisma/migrations/*/migration.sql; do
@@ -45,35 +54,55 @@ for migration_file in /app/prisma/migrations/*/migration.sql; do
       exit 1
       ;;
   esac
-  applied="$(psql "$MIGRATION_DATABASE_URL" -Atq \
-    -c "SELECT COUNT(*) FROM \"_prisma_migrations\" WHERE \"migration_name\" = '$migration_name' AND \"finished_at\" IS NOT NULL AND \"rolled_back_at\" IS NULL")"
-
-  if [ "$applied" -gt 0 ]; then
-    continue
-  fi
-
-  unfinished="$(psql "$MIGRATION_DATABASE_URL" -Atq \
-    -c "SELECT COUNT(*) FROM \"_prisma_migrations\" WHERE \"migration_name\" = '$migration_name' AND \"finished_at\" IS NULL AND \"rolled_back_at\" IS NULL")"
-  if [ "$unfinished" != "0" ]; then
-    echo "Migration $migration_name has an unfinished previous attempt" >&2
-    exit 1
-  fi
-
   migration_id="$(node -e 'process.stdout.write(require("crypto").randomUUID())')"
   checksum="$(sha256sum "$migration_file" | awk '{print $1}')"
-  psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 >/dev/null \
-    -c "INSERT INTO \"_prisma_migrations\" (\"id\", \"checksum\", \"migration_name\") VALUES ('$migration_id', '$checksum', '$migration_name')"
+  psql "$MIGRATION_DATABASE_URL" \
+    -v ON_ERROR_STOP=1 \
+    -v migration_id="$migration_id" \
+    -v migration_name="$migration_name" \
+    -v migration_checksum="$checksum" \
+    -v migration_file="$migration_file" <<'SQL'
+BEGIN;
+SELECT pg_advisory_xact_lock(
+  hashtextextended('slopwise:migrations:' || current_schema(), 0)
+);
 
-  echo "Applying migration $migration_name"
-  if ! psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f "$migration_file"; then
-    psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 >/dev/null \
-      -c "DELETE FROM \"_prisma_migrations\" WHERE \"id\" = '$migration_id'"
-    echo "Migration $migration_name failed; application startup aborted" >&2
-    exit 1
-  fi
+SELECT EXISTS (
+  SELECT 1
+  FROM "_prisma_migrations"
+  WHERE "migration_name" = :'migration_name'
+    AND "finished_at" IS NOT NULL
+    AND "rolled_back_at" IS NULL
+) AS "migration_applied" \gset
 
-  psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 >/dev/null \
-    -c "UPDATE \"_prisma_migrations\" SET \"finished_at\" = now(), \"applied_steps_count\" = 1 WHERE \"id\" = '$migration_id'"
+\if :migration_applied
+  SELECT bool_and("checksum" = :'migration_checksum') AS "checksum_matches"
+  FROM "_prisma_migrations"
+  WHERE "migration_name" = :'migration_name'
+    AND "finished_at" IS NOT NULL
+    AND "rolled_back_at" IS NULL \gset
+  \if :checksum_matches
+    \echo 'Migration' :migration_name 'already applied with matching checksum'
+  \else
+    \warn 'Checksum mismatch for already applied migration' :migration_name
+    SELECT 1 / 0;
+  \endif
+\else
+  DELETE FROM "_prisma_migrations"
+  WHERE "migration_name" = :'migration_name'
+    AND "finished_at" IS NULL;
+  INSERT INTO "_prisma_migrations"
+    ("id", "checksum", "migration_name")
+  VALUES
+    (:'migration_id', :'migration_checksum', :'migration_name');
+  \echo 'Applying migration' :migration_name
+  \i :migration_file
+  UPDATE "_prisma_migrations"
+  SET "finished_at" = now(), "applied_steps_count" = 1
+  WHERE "id" = :'migration_id';
+\endif
+COMMIT;
+SQL
 done
 
 exec node server.js

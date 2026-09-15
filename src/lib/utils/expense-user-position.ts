@@ -2,7 +2,6 @@ export type ExpenseUserPosition =
   | { kind: "PAID"; amount: number }
   | { kind: "OWES"; amount: number; cashPaid: number }
   | { kind: "SETTLED"; cashPaid: number }
-  | { kind: "CASH_PAID"; cashPaid: number }
 
 type Input = {
   currentUserId?: string
@@ -32,10 +31,6 @@ export function getExpenseUserPosition({
     if (remaining > 0) return { kind: "OWES", amount: remaining, cashPaid }
     if (cashPaid > 0) return { kind: "SETTLED", cashPaid }
   }
-
-  // Keep malformed/legacy data understandable if a cash settlement exists
-  // without a corresponding expense split.
-  if (cashPaid > 0) return { kind: "CASH_PAID", cashPaid }
 
   return null
 }

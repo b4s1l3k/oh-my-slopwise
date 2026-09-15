@@ -66,7 +66,6 @@ function expenseDto(): ExpenseDto {
       userId: "user-1",
       amount: 1_000,
       amountBase: 1_000,
-      share: null,
       percentage: null,
       user,
     }],

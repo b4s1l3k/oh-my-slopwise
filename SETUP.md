@@ -1,70 +1,64 @@
 # Локальный запуск
 
 ## Требования
-- Node.js 20+
-- Docker Desktop
-- Доступ в интернет к cbr.ru (для курсов валют; курсы кэшируются в БД)
-- 
-Если регистрация отдаёт 500 — почти всегда не задан `DATABASE_URL` или БД недоступна
-(при живой БД миграции накатятся автоматически на старте).
 
-## Валюты и конвертация
-- Валюта задаётся на уровне группы: ₽ RUB, $ USD, € EUR, ֏ AMD (армянский драм).
-- Каждый расход/расчёт хранится в исходной валюте группы **и** пересчитывается в рубли
-  по курсу **ЦБ РФ на дату операции** (не «на сегодня»). Курс кэшируется в таблице `exchange_rates`.
-- Внутри группы балансы — в её валюте (точно). Общий обзор на дашборде — в рублях
-  (сумма пересчётов по датам операций).
+- Node.js 22;
+- Docker Desktop;
+- PostgreSQL с доступными расширениями `citext` и `pg_trgm` (они уже входят в
+  используемый Docker image; для managed PostgreSQL их должен разрешить оператор);
+- доступ к `cbr.ru` для автоматических курсов валют. Без него можно использовать
+  уже сохранённый или ручной курс.
 
 ## Быстрый старт
 
 ```bash
-# 1. Установить зависимости
-npm install
-
-# 2. Запустить PostgreSQL (порт 5433)
-docker-compose up -d
-
-# 3. Применить миграции БД
-DATABASE_URL="[Secrets32]:[Secrets33]:[Secrets34]:[Secrets35]/splitwise" \
-  npx prisma migrate dev --name init
-
-# 4. Заполнить тестовыми данными
-DATABASE_URL="[Secrets32]:[Secrets33]:[Secrets34]:[Secrets35]/splitwise" \
-  npx tsx prisma/seed.ts
-
-# 5. Запустить сайт
+cp .env.example .env
+docker compose up -d db
+npm run setup
 npm run dev
 ```
 
-Открыть: http://localhost:3000
+Приложение откроется на <http://localhost:3000>. Baseline создаёт только схему:
+demo-пользователей и demo-данных нет. Первый аккаунт создаётся через регистрацию.
 
-## Тестовые аккаунты (после seed)
+`npm run setup` устанавливает зависимости строго по lockfile, генерирует Prisma Client и применяет
+готовые миграции через `prisma migrate deploy`. `npm run dev` самостоятельно
+миграции не применяет.
 
-| Email              | Пароль   |
-|--------------------|----------|
-| alice@demo.com     | password |
-| bob@demo.com       | password |
-| carol@demo.com     | password |
+## Переменные окружения
 
-У всех трёх есть общая группа "Квартира на Тверской" с расходами.
+Актуальный шаблон находится в `.env.example`; для локального запуска скопируйте
+его в `.env`, который читают и Prisma CLI, и Next.js:
 
-## Полезные команды
+- `DATABASE_URL` — PostgreSQL DSN;
+- `AUTH_SECRET` — секрет Auth.js длиной не менее 32 символов;
+- `AUTH_URL` — публичный URL приложения;
+- `NEXT_PUBLIC_API_BASE_URL` — browser API boundary, обычно `/api/v1`;
+- `BACKEND_API_BASE_URL` — абсолютный server-side URL backend, если он вынесен
+  из Next.js приложения;
+- `ADMIN_EMAIL` — необязательный email application admin.
+
+## Работа со схемой
 
 ```bash
-# Просмотр БД в браузере
-DATABASE_URL="[Secrets32]:[Secrets33]:[Secrets34]:[Secrets35]/splitwise" npx prisma studio
+# Применить существующие миграции
+npm run db:deploy
 
-# Сбросить и пересоздать БД
-DATABASE_URL="[Secrets32]:[Secrets33]:[Secrets34]:[Secrets35]/splitwise" npx prisma migrate reset --force
+# Создать новую migration при изменении Prisma schema
+npm run db:migrate -- --name change_description
 
-# Остановить Docker
-docker-compose down
+# Открыть Prisma Studio
+npm run db:studio
+
+# Удалить локальные данные и заново применить baseline
+npm run db:reset
 ```
 
-## Переменные окружения (.env.local)
+`db:reset` разрушителен и предназначен только для локальной или тестовой БД.
 
-```
-DATABASE_URL="[Secrets32]:[Secrets33]:[Secrets34]:[Secrets35]/splitwise"
-NEXTAUTH_SECRET="dev-secret-change-in-production-32chars!!"
-NEXTAUTH_URL="http://localhost:3000"
-```
+## Деньги и валюты
+
+Группа задаёт settlement currency. Расход хранит исходные `amount/currency`, а
+`amountBase` и split base amounts — в валюте группы. Автоматический cross-rate
+рассчитывается через курс ЦБ к RUB на календарную дату расхода; пользователь
+может указать ручной курс.

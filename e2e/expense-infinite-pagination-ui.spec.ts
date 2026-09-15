@@ -23,7 +23,8 @@ test.describe("expense infinite pagination UI", () => {
     }
 
     await page.goto(`/groups/${groupId}`)
-    await expect(page.getByRole("heading", { name: "Расходы (30 из 31)" })).toBeVisible()
+    // Cursor pages intentionally do not expose an expensive global count.
+    await expect(page.getByRole("heading", { name: "Расходы (30 загружено)" })).toBeVisible()
     await expect(page.getByText("UI page expense 31", { exact: true })).toBeVisible()
     await expect(page.getByText("UI page expense 01", { exact: true })).toHaveCount(0)
 
@@ -59,7 +60,7 @@ test.describe("expense infinite pagination UI", () => {
     let pageTwoAttempts = 0
     await page.route(`**/api/v1/groups/${groupId}/expenses**`, async (route) => {
       const url = new URL(route.request().url())
-      if (url.searchParams.get("page") !== "2") {
+      if (url.searchParams.get("cursor") == null) {
         await route.continue()
         return
       }
@@ -80,7 +81,7 @@ test.describe("expense infinite pagination UI", () => {
     await page.getByRole("button", { name: "Показать ещё" }).click()
     await expect(page.getByText("Не удалось загрузить расходы. Попробуйте ещё раз.")).toBeVisible()
     await expect(page.getByText("Recovery expense 31", { exact: true })).toBeVisible()
-    await expect(page.getByRole("heading", { name: "Расходы (30 из 31)" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Расходы (30 загружено)" })).toBeVisible()
 
     await page.getByRole("button", { name: "Показать ещё" }).click()
     await expect(page.getByText("Recovery expense 01", { exact: true })).toBeVisible()

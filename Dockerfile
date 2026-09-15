@@ -31,11 +31,14 @@ RUN apk add --no-cache postgresql-client \
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/prisma/migrations ./prisma/migrations
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
 RUN sed -i 's/\r$//' ./docker-entrypoint.sh && chmod +x ./docker-entrypoint.sh
 
 USER nextjs
 EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=3s --start-period=30s --retries=3 \
+  CMD wget -q --spider http://127.0.0.1:3000/api/health/ready || exit 1
 
 CMD ["./docker-entrypoint.sh"]

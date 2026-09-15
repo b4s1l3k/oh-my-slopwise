@@ -27,6 +27,10 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
     status: 409,
     message: "Пользователь уже состоит в группе",
   },
+  GROUP_MEMBER_LIMIT: {
+    status: 409,
+    message: "В группе уже максимальное число участников",
+  },
   ADMIN_CANNOT_LEAVE: {
     status: 409,
     message: "Администратор не может выйти из группы — удалите группу после завершения расчётов",
@@ -46,6 +50,20 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   CONVERTED_AMOUNT_TOO_SMALL: {
     status: 422,
     message: "Сумма после пересчёта меньше минимальной единицы валюты группы",
+  },
+  INVALID_CURSOR: { status: 400, message: "Некорректный курсор пагинации" },
+  INVALID_PAGE_SIZE: { status: 400, message: "Некорректный размер страницы" },
+  INVALID_IDEMPOTENCY_KEY: {
+    status: 400,
+    message: "Idempotency-Key должен содержать от 8 до 128 латинских букв, цифр или символов . _ : -",
+  },
+  IDEMPOTENCY_KEY_REUSED: {
+    status: 409,
+    message: "Этот Idempotency-Key уже использован с другим запросом",
+  },
+  IDEMPOTENCY_RESULT_UNAVAILABLE: {
+    status: 409,
+    message: "Результат исходного запроса больше недоступен",
   },
   TRANSACTION_CONFLICT: {
     status: 409,

@@ -75,7 +75,7 @@ flowchart LR
 
 | Workload | Ответственность | Состояние |
 |---|---|---|
-| Web/BFF | UI, SSR, browser session, CSRF, web-specific aggregation | Process-local stateless; shared session state во внешнем store |
+| Web/BFF | UI, SSR, browser session, CSRF, web-specific aggregation | Stateless compute replicas; authoritative encrypted sessions в общей PostgreSQL BFF-schema |
 | Backend API | Commands, authoritative queries, authorization, транзакции | Stateless |
 | Worker | Outbox consumers, projections, notifications, scheduled jobs | Lease/checkpoint в PostgreSQL |
 | Migrator | Единственное применение schema migrations | One-shot release job |
@@ -559,8 +559,8 @@ Backups включают PostgreSQL PITR, configuration/IaC, signing keys, signe
 - E2E login, invite/deep link, group, expense, settlement, offline retry и push navigation;
 - accessibility и responsive layouts.
 
-Существующие 990 Vitest tests полного DB-enabled run и 186 language-neutral
-golden vectors являются characterization/reference suite. Новая реализация не
+Существующий полный DB-enabled Vitest suite и 196 language-neutral golden
+vectors являются characterization/reference suite. Новая реализация не
 обязана повторять признанные дефекты, но каждое отличие должно быть результатом
 ADR и отдельного target expectation в test vector.
 
@@ -581,8 +581,8 @@ ADR и отдельного target expectation в test vector.
 9. expected offline/mobile behavior.
 
 Результат: OpenAPI skeleton, отдельный versioned v2 vector manifest/schema,
-матрица всех 33 операций v1 → v2 и список старых особенностей, которые намеренно
-не переносятся. Текущие 186 golden-векторов остаются v1 characterization и не
+матрица всех 34 операций v1 → v2 и список старых особенностей, которые намеренно
+не переносятся. Текущие 196 golden-векторов остаются v1 characterization и не
 являются target gate. До platform также принимаются ADR по OIDC/account
 deletion и retention idempotency records.
 

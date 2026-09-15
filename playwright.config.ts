@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test"
 
-const e2eDatabaseUrl =
+export const e2eDatabaseUrl =
   process.env.E2E_DATABASE_URL ??
   "postgresql://splitwise:splitwise@localhost:5433/splitwise_e2e"
 const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3100"
@@ -45,8 +45,7 @@ export default defineConfig({
     env: {
       ...process.env,
       DATABASE_URL: e2eDatabaseUrl,
-      NEXTAUTH_URL: baseURL,
-      NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET ?? "splitwise-e2e-secret",
+      AUTH_URL: baseURL,
       AUTH_SECRET: process.env.AUTH_SECRET ?? "splitwise-e2e-secret",
       ADMIN_EMAIL: "admin.e2e@example.com",
     },

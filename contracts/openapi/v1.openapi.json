@@ -18,6 +18,7 @@
   ],
   "tags": [
     { "name": "Groups" },
+    { "name": "Activity" },
     { "name": "Expenses" },
     { "name": "Balances" },
     { "name": "Settlements" },
@@ -28,6 +29,52 @@
     { "name": "Feedback" }
   ],
   "paths": {
+    "/api/v1/activity": {
+      "get": {
+        "operationId": "listAccountActivityV1",
+        "tags": ["Activity"],
+        "summary": "List activity from the current user's active groups",
+        "description": "Returns a keyset-paginated account feed ordered by createdAt DESC, id DESC. Activity from groups where the current membership is inactive is excluded.",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque cursor returned by the previous page.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size. Defaults to 50 and cannot exceed 50.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account activity page ordered newest first",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccountActivityPageResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
     "/api/v1/auth/credentials": {
       "post": {
         "operationId": "authenticateCredentialsV1",
@@ -166,6 +213,9 @@
         "operationId": "createFeedbackV1",
         "tags": ["Feedback"],
         "summary": "Submit feedback",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKeyHeader" }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -183,7 +233,9 @@
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
           "422": { "$ref": "#/components/responses/UnprocessableEntity" },
           "500": { "$ref": "#/components/responses/InternalServerError" }
         }
@@ -193,23 +245,41 @@
       "get": {
         "operationId": "listGroupsV1",
         "tags": ["Groups"],
-        "summary": "List active groups of the current user",
+        "summary": "List one cursor page of active groups of the current user",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque cursor returned by the previous page. The server uses a fixed page size of 30.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Groups ordered by descending updatedAt",
+            "description": "Group page ordered by descending updatedAt and id",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/GroupListResponse" }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
         }
       },
       "post": {
         "operationId": "createGroupV1",
         "tags": ["Groups"],
         "summary": "Create a group and memberships",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKeyHeader" }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -227,8 +297,10 @@
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
           "422": { "$ref": "#/components/responses/UnprocessableEntity" },
           "500": { "$ref": "#/components/responses/InternalServerError" }
         }
@@ -348,18 +420,17 @@
       "get": {
         "operationId": "listGroupExpensesV1",
         "tags": ["Expenses"],
-        "summary": "List one page of group expenses",
+        "summary": "List one cursor page of group expenses",
         "parameters": [
           {
-            "name": "page",
+            "name": "cursor",
             "in": "query",
             "required": false,
-            "description": "One-based page number. The server uses a fixed page size of 30.",
+            "description": "Opaque cursor returned by the previous page. The server uses a fixed page size of 30.",
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100000,
-              "default": 1
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
             }
           }
         ],
@@ -382,6 +453,9 @@
         "operationId": "createExpenseV1",
         "tags": ["Expenses"],
         "summary": "Create an expense and optional linked cash settlements",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKeyHeader" }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -399,6 +473,7 @@
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
@@ -537,7 +612,16 @@
       "get": {
         "operationId": "listGroupSettlementsV1",
         "tags": ["Settlements"],
-        "summary": "List group settlements newest business date first",
+        "summary": "List one cursor page of group settlements newest business date first",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque cursor returned by the previous page. The server uses a fixed page size of 50.",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 2048 }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Settlements",
@@ -547,6 +631,7 @@
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "500": { "$ref": "#/components/responses/InternalServerError" }
@@ -623,6 +708,9 @@
         "operationId": "createSettlementV1",
         "tags": ["Settlements"],
         "summary": "Record a settlement from the current user",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKeyHeader" }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -640,6 +728,7 @@
               }
             }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
@@ -828,6 +917,18 @@
           "type": "string",
           "minLength": 1
         }
+      },
+      "IdempotencyKeyHeader": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Recommended for create commands. Reusing the key with the same request within 24 hours returns the original resource; a different request returns 409.",
+        "schema": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
+        }
       }
     },
     "responses": {
@@ -840,10 +941,10 @@
         }
       },
       "BadRequest": {
-        "description": "Malformed query according to route-specific checks",
+        "description": "Malformed query or opaque cursor",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/StringErrorEnvelope" }
+            "schema": { "$ref": "#/components/schemas/LegacyErrorEnvelope" }
           }
         }
       },
@@ -1104,19 +1205,13 @@
       },
       "ExpenseSplit": {
         "type": "object",
-        "required": ["id", "expenseId", "userId", "amount", "amountBase", "share", "percentage", "user"],
+        "required": ["id", "expenseId", "userId", "amount", "amountBase", "percentage", "user"],
         "properties": {
           "id": { "$ref": "#/components/schemas/OpaqueId" },
           "expenseId": { "$ref": "#/components/schemas/OpaqueId" },
           "userId": { "$ref": "#/components/schemas/OpaqueId" },
           "amount": { "$ref": "#/components/schemas/MoneyInteger" },
-          "amountBase": {
-            "oneOf": [
-              { "$ref": "#/components/schemas/MoneyInteger" },
-              { "type": "null" }
-            ]
-          },
-          "share": { "type": ["integer", "null"] },
+          "amountBase": { "$ref": "#/components/schemas/MoneyInteger" },
           "percentage": { "type": ["integer", "null"] },
           "user": { "$ref": "#/components/schemas/UserSummary" }
         }
@@ -1128,12 +1223,7 @@
           "id": { "$ref": "#/components/schemas/OpaqueId" },
           "amount": { "$ref": "#/components/schemas/MoneyInteger" },
           "currency": { "type": "string" },
-          "amountBase": {
-            "oneOf": [
-              { "$ref": "#/components/schemas/MoneyInteger" },
-              { "type": "null" }
-            ]
-          },
+          "amountBase": { "$ref": "#/components/schemas/MoneyInteger" },
           "fromUser": { "$ref": "#/components/schemas/UserName" }
         }
       },
@@ -1152,12 +1242,7 @@
           "title": { "type": "string" },
           "amount": { "$ref": "#/components/schemas/MoneyInteger" },
           "currency": { "type": "string" },
-          "amountBase": {
-            "oneOf": [
-              { "$ref": "#/components/schemas/MoneyInteger" },
-              { "type": "null" }
-            ]
-          },
+          "amountBase": { "$ref": "#/components/schemas/MoneyInteger" },
           "customRate": { "type": ["number", "null"] },
           "category": { "type": ["string", "null"] },
           "splitType": { "type": "string", "enum": ["EQUAL", "EXACT", "PERCENTAGE"] },
@@ -1185,18 +1270,13 @@
         ],
         "properties": {
           "id": { "$ref": "#/components/schemas/OpaqueId" },
-          "groupId": { "type": ["string", "null"] },
+          "groupId": { "$ref": "#/components/schemas/OpaqueId" },
           "expenseId": { "type": ["string", "null"] },
           "fromUserId": { "$ref": "#/components/schemas/OpaqueId" },
           "toUserId": { "$ref": "#/components/schemas/OpaqueId" },
           "amount": { "$ref": "#/components/schemas/MoneyInteger" },
           "currency": { "type": "string" },
-          "amountBase": {
-            "oneOf": [
-              { "$ref": "#/components/schemas/MoneyInteger" },
-              { "type": "null" }
-            ]
-          },
+          "amountBase": { "$ref": "#/components/schemas/MoneyInteger" },
           "date": { "$ref": "#/components/schemas/Timestamp" },
           "notes": { "type": ["string", "null"] },
           "createdAt": { "$ref": "#/components/schemas/Timestamp" },
@@ -1211,7 +1291,7 @@
         ],
         "properties": {
           "id": { "$ref": "#/components/schemas/OpaqueId" },
-          "groupId": { "type": ["string", "null"] },
+          "groupId": { "$ref": "#/components/schemas/OpaqueId" },
           "actorId": { "$ref": "#/components/schemas/OpaqueId" },
           "type": {
             "type": "string",
@@ -1286,6 +1366,7 @@
           "currency": { "allOf": [{ "$ref": "#/components/schemas/Currency" }], "default": "RUB" },
           "memberIds": {
             "type": "array",
+            "maxItems": 100,
             "items": { "$ref": "#/components/schemas/OpaqueId" },
             "default": []
           }
@@ -1338,10 +1419,12 @@
           "splits": {
             "type": "array",
             "minItems": 1,
+            "maxItems": 100,
             "items": { "$ref": "#/components/schemas/ExpenseSplitCommand" }
           },
           "cashPayments": {
             "type": "array",
+            "maxItems": 100,
             "items": { "$ref": "#/components/schemas/CashPaymentCommand" }
           }
         }
@@ -1420,12 +1503,14 @@
       },
       "GroupListResponse": {
         "type": "object",
-        "required": ["groups"],
+        "required": ["groups", "nextCursor"],
         "properties": {
           "groups": {
             "type": "array",
+            "maxItems": 30,
             "items": { "$ref": "#/components/schemas/Group" }
-          }
+          },
+          "nextCursor": { "type": ["string", "null"] }
         }
       },
       "GroupResponse": {
@@ -1451,14 +1536,13 @@
       },
       "ExpensePageResponse": {
         "type": "object",
-        "required": ["expenses", "total", "hasNext"],
+        "required": ["expenses", "nextCursor"],
         "properties": {
           "expenses": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/Expense" }
           },
-          "total": { "type": "integer", "minimum": 0 },
-          "hasNext": { "type": "boolean" }
+          "nextCursor": { "type": ["string", "null"] }
         }
       },
       "UserBalance": {
@@ -1549,12 +1633,13 @@
       },
       "SettlementListResponse": {
         "type": "object",
-        "required": ["settlements"],
+        "required": ["settlements", "nextCursor"],
         "properties": {
           "settlements": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/Settlement" }
-          }
+          },
+          "nextCursor": { "type": ["string", "null"] }
         }
       },
       "ResetSettlementsResponse": {
@@ -1617,6 +1702,53 @@
             "type": "array",
             "items": { "$ref": "#/components/schemas/Activity" }
           }
+        }
+      },
+      "ActivityGroupSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "name": { "type": "string" }
+        }
+      },
+      "AccountActivity": {
+        "type": "object",
+        "required": [
+          "id", "groupId", "actorId", "type", "entityType", "entityId", "metadata",
+          "createdAt", "actor", "group"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/OpaqueId" },
+          "groupId": { "$ref": "#/components/schemas/OpaqueId" },
+          "actorId": { "$ref": "#/components/schemas/OpaqueId" },
+          "type": {
+            "type": "string",
+            "enum": [
+              "EXPENSE_CREATED", "EXPENSE_UPDATED", "EXPENSE_DELETED", "SETTLEMENT_CREATED",
+              "SETTLEMENTS_RESET", "MEMBER_ADDED", "MEMBER_REMOVED", "GROUP_UPDATED"
+            ]
+          },
+          "entityType": { "type": "string" },
+          "entityId": { "type": "string" },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "createdAt": { "$ref": "#/components/schemas/Timestamp" },
+          "actor": { "$ref": "#/components/schemas/UserName" },
+          "group": { "$ref": "#/components/schemas/ActivityGroupSummary" }
+        }
+      },
+      "AccountActivityPageResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["activities", "nextCursor"],
+        "properties": {
+          "activities": {
+            "type": "array",
+            "maxItems": 50,
+            "items": { "$ref": "#/components/schemas/AccountActivity" }
+          },
+          "nextCursor": { "type": ["string", "null"] }
         }
       },
       "FeedbackResponse": {

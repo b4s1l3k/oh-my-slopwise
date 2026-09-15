@@ -89,14 +89,18 @@ test.describe("expense HTTP validation", () => {
     }, "SPLIT_USER_NOT_MEMBER")
   })
 
-  test("validates expense-list page query parameters", async ({ page }) => {
+  test("validates opaque expense-list cursors", async ({ page }) => {
     await login(page, users.alice)
     const groupId = await createGroup(page, { name: "Expense Page Validation E2E" })
 
-    for (const query of ["page=0", "page=-1", "page=1.5", "page=NaN", "page=100001"]) {
-      const response = await page.request.get(`/api/v1/groups/${groupId}/expenses?${query}`)
-      expect(response.status(), query).toBe(400)
-      await expect(response.json()).resolves.toEqual({ error: "Invalid page" })
+    for (const cursor of ["", "not-base64-json", "e30", "x".repeat(2_049)]) {
+      const response = await page.request.get(
+        `/api/v1/groups/${groupId}/expenses?cursor=${encodeURIComponent(cursor)}`
+      )
+      expect(response.status(), cursor.slice(0, 40)).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "INVALID_CURSOR" },
+      })
     }
   })
 })

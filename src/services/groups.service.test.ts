@@ -85,6 +85,17 @@ describeDatabase("groups.service behavioral spec", () => {
         })
       ).rejects.toThrow("USER_NOT_FOUND")
     })
+
+    it("rejects a group larger than the bounded active-member limit", async () => {
+      const admin = await createUser("Capacity Admin")
+
+      await expect(createGroup(admin.id, {
+        name: "Oversized group",
+        type: "OTHER",
+        currency: "RUB",
+        memberIds: Array.from({ length: 100 }, (_, index) => `member-${index}`),
+      })).rejects.toThrow("GROUP_MEMBER_LIMIT")
+    })
   })
 
   describe("getUserGroups / getGroup", () => {
@@ -100,11 +111,120 @@ describeDatabase("groups.service behavioral spec", () => {
         memberIds: [member.id],
       })
 
-      const memberGroups = await getUserGroups(member.id)
+      const { groups: memberGroups } = await getUserGroups(member.id)
       expect(memberGroups.map((g) => g.id)).toContain(group.id)
 
       const readByMember = await getGroup(group.id, member.id)
       expect(readByMember?.id).toBe(group.id)
+    })
+
+    it("returns stable bounded cursor pages without duplicates at equal timestamps", async () => {
+      const admin = await createUser("Paged Admin")
+      const rows = [
+        { id: `${testPrefix}-page-a`, updatedAt: new Date("2026-08-01T10:00:00.000Z") },
+        { id: `${testPrefix}-page-b`, updatedAt: new Date("2026-08-03T10:00:00.000Z") },
+        { id: `${testPrefix}-page-c`, updatedAt: new Date("2026-08-03T10:00:00.000Z") },
+        { id: `${testPrefix}-page-d`, updatedAt: new Date("2026-08-02T10:00:00.000Z") },
+        { id: `${testPrefix}-page-e`, updatedAt: new Date("2026-07-31T10:00:00.000Z") },
+      ]
+      for (const row of rows) {
+        await prisma.group.create({
+          data: {
+            id: row.id,
+            name: row.id,
+            type: "OTHER",
+            currency: "RUB",
+            createdById: admin.id,
+            updatedAt: row.updatedAt,
+            members: {
+              create: { userId: admin.id, role: "ADMIN" },
+            },
+          },
+        })
+      }
+
+      const first = await getUserGroups(admin.id, null, 2)
+      const second = await getUserGroups(admin.id, first.nextCursor, 2)
+      const third = await getUserGroups(admin.id, second.nextCursor, 2)
+
+      expect([
+        ...first.groups,
+        ...second.groups,
+        ...third.groups,
+      ].map((group) => group.id)).toEqual([
+        `${testPrefix}-page-c`,
+        `${testPrefix}-page-b`,
+        `${testPrefix}-page-d`,
+        `${testPrefix}-page-a`,
+        `${testPrefix}-page-e`,
+      ])
+      expect(first.nextCursor).not.toBeNull()
+      expect(second.nextCursor).not.toBeNull()
+      expect(third.nextCursor).toBeNull()
+    })
+
+    it("keeps the group feed timestamp synchronized for direct database writers", async () => {
+      const [admin, member] = await Promise.all([
+        createUser("Feed Projection Admin"),
+        createUser("Feed Projection Member"),
+      ])
+      const historicalUpdatedAt = new Date("2026-01-02T03:04:05.678Z")
+      const group = await prisma.group.create({
+        data: {
+          name: "Feed projection group",
+          type: "OTHER",
+          currency: "RUB",
+          createdById: admin.id,
+          updatedAt: historicalUpdatedAt,
+          members: {
+            create: { userId: admin.id, role: "ADMIN" },
+          },
+        },
+      })
+
+      const initialMembership = await prisma.groupMember.findUniqueOrThrow({
+        where: { groupId_userId: { groupId: group.id, userId: admin.id } },
+        select: { groupUpdatedAt: true },
+      })
+      expect(initialMembership.groupUpdatedAt).toEqual(historicalUpdatedAt)
+
+      await prisma.$executeRaw`
+        INSERT INTO "group_members" ("id", "groupId", "userId", "role")
+        VALUES (${`${testPrefix}-feed-member`}, ${group.id}, ${member.id}, 'MEMBER'::"GroupMemberRole")
+      `
+      const insertedMembership = await prisma.groupMember.findUniqueOrThrow({
+        where: { groupId_userId: { groupId: group.id, userId: member.id } },
+        select: { groupUpdatedAt: true },
+      })
+      expect(insertedMembership.groupUpdatedAt).toEqual(historicalUpdatedAt)
+
+      const [updatedGroup] = await prisma.$queryRaw<Array<{ updatedAt: Date }>>`
+        UPDATE "groups"
+        SET "name" = 'Feed projection group updated'
+        WHERE "id" = ${group.id}
+        RETURNING "updatedAt"
+      `
+      const projectedMemberships = await prisma.groupMember.findMany({
+        where: { groupId: group.id },
+        select: { groupUpdatedAt: true },
+      })
+      expect(projectedMemberships).toHaveLength(2)
+      expect(projectedMemberships.every(
+        ({ groupUpdatedAt }) => groupUpdatedAt.getTime() === updatedGroup.updatedAt.getTime()
+      )).toBe(true)
+
+      await prisma.$executeRaw`
+        UPDATE "group_members"
+        SET "groupUpdatedAt" = ${historicalUpdatedAt}
+        WHERE "groupId" = ${group.id}
+      `
+      const correctedMemberships = await prisma.groupMember.findMany({
+        where: { groupId: group.id },
+        select: { groupUpdatedAt: true },
+      })
+      expect(correctedMemberships.every(
+        ({ groupUpdatedAt }) => groupUpdatedAt.getTime() === updatedGroup.updatedAt.getTime()
+      )).toBe(true)
     })
 
     it("does not expose member requisites in the group list", async () => {
@@ -127,7 +247,7 @@ describeDatabase("groups.service behavioral spec", () => {
         },
       })
 
-      const listedGroup = (await getUserGroups(member.id)).find(({ id }) => id === group.id)
+      const listedGroup = (await getUserGroups(member.id)).groups.find(({ id }) => id === group.id)
       const listedAdmin = listedGroup?.members.find(({ userId }) => userId === admin.id)
 
       expect(listedAdmin).toBeDefined()

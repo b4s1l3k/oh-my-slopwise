@@ -53,13 +53,17 @@ export type GroupViewModel = {
   expenseCount: number | null
 }
 
+export type GroupPageViewModel = {
+  groups: GroupViewModel[]
+  nextCursor: string | null
+}
+
 export type ExpenseSplitViewModel = {
   id: string
   expenseId: string
   userId: string
   amount: number
-  amountBase: number | null
-  share: number | null
+  amountBase: number
   percentage: number | null
   user: UserSummaryViewModel
 }
@@ -68,7 +72,7 @@ export type ExpenseCashSettlementViewModel = {
   id: string
   amount: number
   currency: string
-  amountBase: number | null
+  amountBase: number
   fromUser: UserNameViewModel
 }
 
@@ -80,7 +84,7 @@ export type ExpenseViewModel = {
   title: string
   amount: number
   currency: string
-  amountBase: number | null
+  amountBase: number
   customRate: number | null
   category: string | null
   splitType: ExpenseSplitTypeViewModel
@@ -96,19 +100,18 @@ export type ExpenseViewModel = {
 
 export type ExpensePageViewModel = {
   expenses: ExpenseViewModel[]
-  total: number
-  hasNext: boolean
+  nextCursor: string | null
 }
 
 export type SettlementViewModel = {
   id: string
-  groupId: string | null
+  groupId: string
   expenseId: string | null
   fromUserId: string
   toUserId: string
   amount: number
   currency: string
-  amountBase: number | null
+  amountBase: number
   date: string
   notes: string | null
   createdAt: string
@@ -203,7 +206,7 @@ export type ActivityTypeViewModel =
 
 export type ActivityItemViewModel = {
   id: string
-  groupId: string | null
+  groupId: string
   actorId: string
   type: ActivityTypeViewModel
   entityType: string
@@ -211,6 +214,18 @@ export type ActivityItemViewModel = {
   metadata: ActivityMetadataViewModel
   createdAt: string
   actor: UserNameViewModel
+}
+
+export type AccountActivityItemViewModel = ActivityItemViewModel & {
+  group: {
+    id: string
+    name: string
+  }
+}
+
+export type AccountActivityPageViewModel = {
+  activities: AccountActivityItemViewModel[]
+  nextCursor: string | null
 }
 
 export type GroupActivityViewModel = {

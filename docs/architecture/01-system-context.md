@@ -95,7 +95,11 @@ Server layouts выполняют обязательную проверку се
 
 ### Data boundary
 
-Prisma Client инкапсулирует SQL-доступ. Схема и миграции рассчитаны на PostgreSQL. Raw balance не материализован и вычисляется on demand из `Expense`, `ExpenseSplit` и `Settlement`; simplified edges при равных позициях могут зависеть от порядка строк.
+Prisma Client инкапсулирует SQL-доступ. Схема и миграции рассчитаны на
+PostgreSQL. `Expense`, `ExpenseSplit` и `Settlement` остаются исходным ledger, а
+текущий raw balance синхронно материализуется в rebuildable
+`group_member_positions`. Simplified graph строится on demand из positions и при
+равных балансах использует детерминированный tie-break по user ID.
 
 ### External service boundary
 
@@ -132,12 +136,12 @@ sequenceDiagram
     participant S as Service
     participant DB as PostgreSQL transaction
 
-    B->>R: POST/PATCH/DELETE + JSON
+    B->>R: POST/PATCH/DELETE + JSON (+ Idempotency-Key для create)
     R->>R: auth + Zod safeParse
     R->>S: command + authenticated userId
     S->>DB: begin
     S->>DB: повторная проверка прав/состояния
-    S->>DB: изменение доменной сущности
+    S->>DB: изменение доменной сущности + idempotency record для create
     S->>DB: activity и/или statistic facts, если предусмотрены
     S->>DB: commit
     S-->>R: result
@@ -158,4 +162,7 @@ Profile, requisites, feedback, registration и часть простых опе�
 - фоновых worker-ов, очереди сообщений и event bus нет;
 - для core mutations производные activity/statistics, предусмотренные сценарием, обновляются синхронно в той же транзакции.
 
-Это упрощает согласованность и локальную разработку, но означает, что HTTP serving, тяжёлые вычисления статистики и внешние запросы за курсами конкурируют за ресурсы одного Node.js процесса.
+Это упрощает согласованность и локальную разработку, но означает, что HTTP
+serving, синхронная транзакционная работа/projection updates и внешние запросы
+за курсами конкурируют за ресурсы одного Node.js процесса. Statistics reads уже
+обслуживаются компактными DB projections и не сканируют всю историю.

@@ -29,6 +29,7 @@ const metrics: AchievementMetrics = {
   homeGroups: 0,
   tripGroups: 0,
   coupleGroups: 0,
+  otherGroups: 0,
   maxGroupMembers: 0,
   maxGroupExpenses: 0,
 }
@@ -49,24 +50,19 @@ describe("profile statistics projection properties", () => {
     expect(changed).not.toHaveProperty("groupTypesUsed")
   })
 
-  it.each([
-    [0, 0, 0, 0, 0],
-    [5, 1, 1, 1, 2],
-    [5, 5, 0, 0, 0],
-    [5, 4, 4, 4, 0],
-    [20, 3, 4, 5, 8],
-  ] as const)(
-    "derives OTHER=%i-%i-%i-%i with a zero floor",
-    (activeGroups, homeGroups, tripGroups, coupleGroups, other) => {
+  it.each([0, 1, 8, 100] as const)(
+    "maps %i lifetime OTHER groups without deriving them from active groups",
+    (otherGroups) => {
       const result = buildProfileStatistics({
         ...metrics,
-        activeGroups,
-        homeGroups,
-        tripGroups,
-        coupleGroups,
+        activeGroups: 1,
+        homeGroups: 20,
+        tripGroups: 30,
+        coupleGroups: 40,
+        otherGroups,
       })
 
-      expect(result.groups.other).toBe(other)
+      expect(result.groups.other).toBe(otherGroups)
     }
   )
 

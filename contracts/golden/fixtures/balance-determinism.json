@@ -37,16 +37,14 @@
       "description": "Equal debtors are matched in immutable account-ID order in the target algorithm.",
       "operation": "balance.calculate",
       "input": { "userNames": { "z": "Z", "bob": "Bob", "alice": "Alice" }, "expenses": [{ "paidById": "z", "splits": [{ "userId": "bob", "amount": 50 }, { "userId": "alice", "amount": 50 }] }], "settlements": [] },
-      "expected": { "ok": true, "value": { "simplified": [{ "fromUserId": "alice", "fromUserName": "Alice", "toUserId": "z", "toUserName": "Z", "amount": 50 }, { "fromUserId": "bob", "fromUserName": "Bob", "toUserId": "z", "toUserName": "Z", "amount": 50 }], "raw": [{ "userId": "z", "userName": "Z", "balance": 100 }, { "userId": "bob", "userName": "Bob", "balance": -50 }, { "userId": "alice", "userName": "Alice", "balance": -50 }] } },
-      "expectedByAdapter": { "legacy": { "ok": true, "value": { "simplified": [{ "fromUserId": "bob", "fromUserName": "Bob", "toUserId": "z", "toUserName": "Z", "amount": 50 }, { "fromUserId": "alice", "fromUserName": "Alice", "toUserId": "z", "toUserName": "Z", "amount": 50 }], "raw": [{ "userId": "z", "userName": "Z", "balance": 100 }, { "userId": "bob", "userName": "Bob", "balance": -50 }, { "userId": "alice", "userName": "Alice", "balance": -50 }] } } }
+      "expected": { "ok": true, "value": { "simplified": [{ "fromUserId": "alice", "fromUserName": "Alice", "toUserId": "z", "toUserName": "Z", "amount": 50 }, { "fromUserId": "bob", "fromUserName": "Bob", "toUserId": "z", "toUserName": "Z", "amount": 50 }], "raw": [{ "userId": "z", "userName": "Z", "balance": 100 }, { "userId": "bob", "userName": "Bob", "balance": -50 }, { "userId": "alice", "userName": "Alice", "balance": -50 }] } }
     },
     {
       "id": "balance.creditor-tie-break-by-account",
       "description": "Equal creditors are matched in immutable account-ID order in the target algorithm.",
       "operation": "balance.calculate",
       "input": { "userNames": { "bob": "Bob", "alice": "Alice", "carol": "Carol" }, "expenses": [{ "paidById": "bob", "splits": [{ "userId": "carol", "amount": 50 }] }, { "paidById": "alice", "splits": [{ "userId": "carol", "amount": 50 }] }], "settlements": [] },
-      "expected": { "ok": true, "value": { "simplified": [{ "fromUserId": "carol", "fromUserName": "Carol", "toUserId": "alice", "toUserName": "Alice", "amount": 50 }, { "fromUserId": "carol", "fromUserName": "Carol", "toUserId": "bob", "toUserName": "Bob", "amount": 50 }], "raw": [{ "userId": "bob", "userName": "Bob", "balance": 50 }, { "userId": "carol", "userName": "Carol", "balance": -100 }, { "userId": "alice", "userName": "Alice", "balance": 50 }] } },
-      "expectedByAdapter": { "legacy": { "ok": true, "value": { "simplified": [{ "fromUserId": "carol", "fromUserName": "Carol", "toUserId": "bob", "toUserName": "Bob", "amount": 50 }, { "fromUserId": "carol", "fromUserName": "Carol", "toUserId": "alice", "toUserName": "Alice", "amount": 50 }], "raw": [{ "userId": "bob", "userName": "Bob", "balance": 50 }, { "userId": "carol", "userName": "Carol", "balance": -100 }, { "userId": "alice", "userName": "Alice", "balance": 50 }] } } }
+      "expected": { "ok": true, "value": { "simplified": [{ "fromUserId": "carol", "fromUserName": "Carol", "toUserId": "alice", "toUserName": "Alice", "amount": 50 }, { "fromUserId": "carol", "fromUserName": "Carol", "toUserId": "bob", "toUserName": "Bob", "amount": 50 }], "raw": [{ "userId": "bob", "userName": "Bob", "balance": 50 }, { "userId": "carol", "userName": "Carol", "balance": -100 }, { "userId": "alice", "userName": "Alice", "balance": 50 }] } }
     },
     {
       "id": "balance.fallback-to-account-id",

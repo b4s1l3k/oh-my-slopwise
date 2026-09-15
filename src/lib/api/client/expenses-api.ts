@@ -2,22 +2,23 @@ import type {
   ApiOperationRequest,
   ApiOperationResponse,
 } from "@contract/v1"
-import { apiRequest, type ApiCallOptions } from "@/lib/api/client/http-client"
+import {
+  apiRequest,
+  idempotentApiRequest,
+  type ApiCallOptions,
+} from "@/lib/api/client/http-client"
 
 function pathSegment(value: string): string {
   return encodeURIComponent(value)
 }
 
 export const expensesApi = {
-  getExpense: (expenseId: string, options?: ApiCallOptions) =>
-    apiRequest<ApiOperationResponse<"getExpenseV1", 200>>(
-      `/expenses/${pathSegment(expenseId)}`,
-      options
-    ),
-  getGroupExpenses: (groupId: string, page: number, options?: ApiCallOptions) => {
-    const search = new URLSearchParams({ page: String(page) })
+  getGroupExpenses: (groupId: string, cursor?: string | null, options?: ApiCallOptions) => {
+    const search = new URLSearchParams()
+    if (cursor != null) search.set("cursor", cursor)
+    const query = search.size > 0 ? `?${search}` : ""
     return apiRequest<ApiOperationResponse<"listGroupExpensesV1", 200>>(
-      `/groups/${pathSegment(groupId)}/expenses?${search}`,
+      `/groups/${pathSegment(groupId)}/expenses${query}`,
       options
     )
   },
@@ -26,7 +27,7 @@ export const expensesApi = {
     command: ApiOperationRequest<"createExpenseV1">,
     options?: ApiCallOptions
   ) =>
-    apiRequest<ApiOperationResponse<"createExpenseV1", 201>>(
+    idempotentApiRequest<ApiOperationResponse<"createExpenseV1", 201>>(
       `/groups/${pathSegment(groupId)}/expenses`,
       {
         ...options,

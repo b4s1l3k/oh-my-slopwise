@@ -173,6 +173,82 @@ describeDatabase("balances service (DB-backed behavioral spec)", () => {
   })
 
   describe("getOverviewBalances", () => {
+    it("matches greedy group simplification without loading the full group graph", async () => {
+      const [me, primaryCreditor, secondaryCreditor, primaryDebtor] = await Promise.all([
+        createUser("Overview interval me"),
+        createUser("Overview interval primary creditor"),
+        createUser("Overview interval secondary creditor"),
+        createUser("Overview interval primary debtor"),
+      ])
+      const group = await createGroup(me.id, {
+        name: "Overview interval matching",
+        type: "OTHER",
+        currency: "RUB",
+        memberIds: [primaryCreditor.id, secondaryCreditor.id, primaryDebtor.id],
+      })
+      await createExpense(group.id, me.id, {
+        title: "Primary creditor expense",
+        amount: 1_000,
+        currency: "RUB",
+        date: EXPENSE_DATE,
+        paidById: primaryCreditor.id,
+        splitType: "EXACT",
+        splits: [
+          { userId: me.id, amount: 600 },
+          { userId: primaryDebtor.id, amount: 400 },
+        ],
+      })
+      await createExpense(group.id, me.id, {
+        title: "Secondary creditor expense",
+        amount: 500,
+        currency: "RUB",
+        date: EXPENSE_DATE,
+        paidById: secondaryCreditor.id,
+        splitType: "EXACT",
+        splits: [{ userId: primaryDebtor.id, amount: 500 }],
+      })
+
+      const groupDebts = await computeGroupDebts(group.id)
+      expect(groupDebts.simplified).toEqual([
+        expect.objectContaining({
+          fromUserId: primaryDebtor.id,
+          toUserId: primaryCreditor.id,
+          amount: 900,
+        }),
+        expect.objectContaining({
+          fromUserId: me.id,
+          toUserId: primaryCreditor.id,
+          amount: 100,
+        }),
+        expect.objectContaining({
+          fromUserId: me.id,
+          toUserId: secondaryCreditor.id,
+          amount: 500,
+        }),
+      ])
+
+      const overview = await getOverviewBalances(me.id)
+      expect(overview.friendBalances).toEqual([
+        {
+          userId: primaryCreditor.id,
+          userName: primaryCreditor.name,
+          avatarUrl: null,
+          balance: -100,
+          currency: "RUB",
+          groups: [group.name],
+        },
+        {
+          userId: secondaryCreditor.id,
+          userName: secondaryCreditor.name,
+          avatarUrl: null,
+          balance: -500,
+          currency: "RUB",
+          groups: [group.name],
+        },
+      ].sort((left, right) => left.userId.localeCompare(right.userId)))
+      expect(overview.totals).toEqual([{ currency: "RUB", owed: 0, owe: 600 }])
+    })
+
     it("aggregates per (friend, currency), keeps currencies separate, and drops zero-net friends", async () => {
       // FX rates are pre-seeded for a fixed UTC-midnight date. Same-currency
       // expenses need no conversion, but we seed to keep the suite FX-free.

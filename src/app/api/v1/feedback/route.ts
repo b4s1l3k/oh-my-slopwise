@@ -4,6 +4,7 @@ import { feedbackSchema } from "@/lib/validations/feedback"
 import { createFeedback } from "@/services/feedback.service"
 import { handleServiceError } from "@/lib/api-errors"
 import { toFeedbackResponse } from "@/lib/api/v1/response-mappers"
+import { readIdempotencyKey } from "@/lib/idempotency-key"
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -16,7 +17,11 @@ export async function POST(req: Request) {
   }
 
   try {
-    const feedback = await createFeedback(session.user.id, parsed.data.message)
+    const feedback = await createFeedback(
+      session.user.id,
+      parsed.data.message,
+      readIdempotencyKey(req)
+    )
     return NextResponse.json(toFeedbackResponse(feedback), { status: 201 })
   } catch (e) {
     return handleServiceError(e)

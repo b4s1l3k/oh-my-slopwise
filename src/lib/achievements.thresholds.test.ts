@@ -32,6 +32,7 @@ const zeroMetrics: AchievementMetrics = {
   homeGroups: 0,
   tripGroups: 0,
   coupleGroups: 0,
+  otherGroups: 0,
   maxGroupMembers: 0,
   maxGroupExpenses: 0,
 }

@@ -327,18 +327,40 @@ describeDatabase("settlements service (DB-backed behavioral spec)", () => {
         createUser("List Outsider"),
       ])
       const group = await makeDebtGroup(payer, recipient, 500)
-      const settlement = await createSettlement(payer.id, {
+      const firstSettlement = await createSettlement(payer.id, {
         groupId: group.id,
         toUserId: recipient.id,
-        amount: 500,
+        amount: 200,
+        currency: "RUB",
+        date: SETTLE_DATE,
+      })
+      const secondSettlement = await createSettlement(payer.id, {
+        groupId: group.id,
+        toUserId: recipient.id,
+        amount: 300,
         currency: "RUB",
         date: SETTLE_DATE,
       })
 
-      const asMember = await getGroupSettlements(group.id, recipient.id)
-      expect(asMember.map((s) => s.id)).toContain(settlement.id)
+      const firstPage = await getGroupSettlements(group.id, recipient.id, null, 1)
+      expect(firstPage.settlements).toHaveLength(1)
+      expect(firstPage.nextCursor).toEqual(expect.any(String))
+      const secondPage = await getGroupSettlements(
+        group.id,
+        recipient.id,
+        firstPage.nextCursor,
+        1
+      )
+      expect(secondPage.settlements).toHaveLength(1)
+      expect(secondPage.nextCursor).toBeNull()
+      expect(new Set([
+        firstPage.settlements[0].id,
+        secondPage.settlements[0].id,
+      ])).toEqual(new Set([firstSettlement.id, secondSettlement.id]))
 
       await expect(getGroupSettlements(group.id, outsider.id)).rejects.toThrow("FORBIDDEN")
+      await expect(getGroupSettlements(group.id, recipient.id, "invalid", 1))
+        .rejects.toThrow("INVALID_CURSOR")
     })
   })
 })

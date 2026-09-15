@@ -2,15 +2,26 @@ import type {
   ApiOperationRequest,
   ApiOperationResponse,
 } from "@contract/v1"
-import { apiRequest, type ApiCallOptions } from "@/lib/api/client/http-client"
+import {
+  apiRequest,
+  idempotentApiRequest,
+  type ApiCallOptions,
+} from "@/lib/api/client/http-client"
 
 function pathSegment(value: string): string {
   return encodeURIComponent(value)
 }
 
 export const groupsApi = {
-  getGroups: (options?: ApiCallOptions) =>
-    apiRequest<ApiOperationResponse<"listGroupsV1", 200>>("/groups", options),
+  getGroups: (cursor?: string | null, options?: ApiCallOptions) => {
+    const search = new URLSearchParams()
+    if (cursor != null) search.set("cursor", cursor)
+    const query = search.size > 0 ? `?${search}` : ""
+    return apiRequest<ApiOperationResponse<"listGroupsV1", 200>>(
+      `/groups${query}`,
+      options
+    )
+  },
   getGroup: (groupId: string, options?: ApiCallOptions) =>
     apiRequest<ApiOperationResponse<"getGroupV1", 200>>(
       `/groups/${pathSegment(groupId)}`,
@@ -20,7 +31,7 @@ export const groupsApi = {
     command: ApiOperationRequest<"createGroupV1">,
     options?: ApiCallOptions
   ) =>
-    apiRequest<ApiOperationResponse<"createGroupV1", 201>>("/groups", {
+    idempotentApiRequest<ApiOperationResponse<"createGroupV1", 201>>("/groups", {
       ...options,
       method: "POST",
       body: command,
@@ -44,11 +55,6 @@ export const groupsApi = {
         ...options,
         method: "DELETE",
       }
-    ),
-  getActivity: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<ApiOperationResponse<"listGroupActivityV1", 200>>(
-      `/groups/${pathSegment(groupId)}/activity`,
-      options
     ),
   updateRequisites: (
     groupId: string,

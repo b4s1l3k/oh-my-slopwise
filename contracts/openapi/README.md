@@ -12,7 +12,7 @@ In particular, v1 keeps:
 - integer monetary amounts in the application's legacy minor-unit convention;
 - ISO date-time strings in persisted resource responses and strict
   `YYYY-MM-DD` calendar-date strings in expense and settlement commands;
-- page-number expense pagination;
+- opaque cursor pagination for groups, expenses, settlements and account activity;
 - the three existing error shapes: plain string, Zod `flatten()` and service
   `{ code?, message }` envelopes;
 - the legacy response field set, including nullable persistence fields; explicit

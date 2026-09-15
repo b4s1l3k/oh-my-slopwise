@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { apiJson, createExpense, createGroup, login, userId, users } from "./helpers"
+import { apiJson, createExpense, createGroup, login, users } from "./helpers"
 
 test.describe("expense editing and deletion", () => {
   test("edits an expense through the UI and preserves the business date", async ({ page }) => {

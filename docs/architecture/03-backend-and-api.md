@@ -14,7 +14,7 @@ src/lib/db.ts                Prisma Client singleton
 prisma/schema.prisma         persistence model
 ```
 
-Отдельных repository interfaces и разделённых domain/persistence models нет. Services и некоторые routes всё ещё получают Prisma-shaped results, но публичные success responses проходят через явные v1 response DTO и field-by-field mapper-ы. Большая часть use-case логики находится в services, однако profile, registration, user search, activity и group requisites routes используют Prisma напрямую.
+Отдельных repository interfaces и разделённых domain/persistence models нет. Services и некоторые routes всё ещё получают Prisma-shaped results, но публичные success responses проходят через явные v1 response DTO и field-by-field mapper-ы. Большая часть use-case логики находится в services, однако profile, registration, user search и group requisites routes используют Prisma напрямую.
 
 ## Стандартный request flow
 
@@ -46,11 +46,11 @@ flowchart LR
 
 ## Endpoint inventory
 
-Всего реализовано 23 пути `/api/v1` и 33 v1 HTTP-операции, а также Auth.js catch-all route.
+Всего реализовано 24 пути `/api/v1` и 34 v1 HTTP-операции, а также Auth.js catch-all route.
 
 Машиночитаемый canonical contract находится в
-`contracts/openapi/v1.openapi.json`. Он описывает текущие DTO, cookie auth, page
-pagination, integer money и неоднородные error envelopes. Контракт и реализация
+`contracts/openapi/v1.openapi.json`. Он описывает текущие DTO, cookie auth,
+cursor pagination, integer money и неоднородные error envelopes. Контракт и реализация
 меняются вместе; при переписывании неудачную семантику v1 можно исправлять
 явными согласованными изменениями контракта. Тест
 `contracts/openapi/v1.openapi.test.ts` сверяет множество path/method с
@@ -90,7 +90,7 @@ Achievement GET является safe read. Persistence и notification claim в
 
 | Метод и путь | Доступ | Назначение |
 |---|---|---|
-| `GET /api/v1/groups` | Session | Активные группы пользователя |
+| `GET /api/v1/groups?cursor=` | Session | Cursor-страница из 30 активных групп, `{ groups, nextCursor }` |
 | `POST /api/v1/groups` | Session | Создать группу; creator становится admin |
 | `GET /api/v1/groups/:id` | Active member | Группа, участники, условно видимые реквизиты |
 | `PATCH /api/v1/groups/:id` | Group admin | Изменить name/description |
@@ -102,11 +102,23 @@ Achievement GET является safe read. Persistence и notification claim в
 | `POST /api/v1/groups/:id/invite` | Active member | Получить существующий или создать active invite |
 | `DELETE /api/v1/groups/:id/invite` | Group admin | Отозвать все active invites |
 
+### Activity
+
+| Метод и путь | Доступ | Назначение |
+|---|---|---|
+| `GET /api/v1/activity?cursor=&limit=` | Session | Cursor-страница до 50 событий только из текущих active memberships, `{ activities, nextCursor }` |
+
+Account-level feed имеет стабильный порядок `createdAt DESC, id DESC` и opaque
+cursor с обеими частями ключа. Сервис начинает SQL-запрос с materialized списка
+активных memberships пользователя, затем присоединяет строки по индексу
+`activity_log(groupId, createdAt, id)`. Поэтому запрос не сканирует глобальный хвост
+активности чужих групп при разреженном пользователе.
+
 ### Expenses, balances и settlements
 
 | Метод и путь | Доступ | Назначение |
 |---|---|---|
-| `GET /api/v1/groups/:id/expenses?page=N` | Active member | Страница из 30 расходов |
+| `GET /api/v1/groups/:id/expenses?cursor=` | Active member | Cursor-страница из 30 расходов, `{ expenses, nextCursor }` |
 | `POST /api/v1/groups/:id/expenses` | Active member | Создать расход |
 | `GET /api/v1/expenses/:id` | Active member | Получить расход |
 | `PATCH /api/v1/expenses/:id` | Creator, payer либо admin | Гибридный update обязательных полей и splits; см. lifecycle ниже |
@@ -114,7 +126,7 @@ Achievement GET является safe read. Persistence и notification claim в
 | `GET /api/v1/groups/:id/balances` | Active member | Raw и simplified balances |
 | `GET /api/v1/balances/overview` | Session | Балансы по контрагенту и валюте групп |
 | `POST /api/v1/settlements` | Debtor/active member | Частично или полностью погасить свой suggested debt |
-| `GET /api/v1/groups/:id/settlements` | Active member | Все расчёты группы |
+| `GET /api/v1/groups/:id/settlements?cursor=` | Active member | Cursor-страница из 50 расчётов, `{ settlements, nextCursor }` |
 | `DELETE /api/v1/groups/:id/settlements` | Group admin | Удалить только manual settlements |
 
 ### Invites и feedback
@@ -137,11 +149,11 @@ Achievement GET является safe read. Persistence и notification claim в
 - currency из 20 поддерживаемых кодов;
 - positive custom rate до 1 млн;
 - строгую календарную дату `YYYY-MM-DD`; timestamp отклоняется, а дата сохраняется как UTC midnight;
-- непустой и уникальный список split users;
+- непустой и уникальный список split users, максимум 100;
 - optional notes длиной до 1000 и optional category без отдельного ограничения длины;
 - exact shares > 0 и точное совпадение суммы;
 - percentage shares > 0 и сумму `10000` basis points;
-- уникальные positive cash payments только для участников, не для payer и не выше доли.
+- максимум 100 уникальных positive cash payments только для участников, не для payer и не выше доли.
 
 Та же schema используется для `PATCH`: обязательные поля и splits заменяются полностью, отсутствующий `customRate` сбрасывается в null, а отсутствующие `notes/category` попадают в Prisma как `undefined` и сохраняют прежнее значение. Cash payments на update запрещены. Это гибридная, не полностью REST-типичная PATCH semantics.
 
@@ -151,7 +163,7 @@ Achievement GET является safe read. Persistence и notification claim в
 - description до 500;
 - type из четырёх enum values;
 - supported settlement currency;
-- список непустых member IDs.
+- максимум 100 member IDs; после дедупликации вместе с creator активных участников также не больше 100.
 
 Update schema содержит только optional name/description. Пустой object проходит validation и всё равно приводит к update/activity.
 
@@ -171,8 +183,7 @@ Profile fields нормализуют реквизиты через `trim`; пу
 
 Общие ограничения schemas:
 
-- whitespace-only name/title может пройти `min(1)` там, где нет transform/trim;
-- array size limits для splits, members и cash payments отсутствуют;
+- whitespace-only title может пройти `min(1)`; имя группы нормализуется через `trim`;
 - будущие календарные даты не запрещены;
 - лишние JSON fields Zod по умолчанию отбрасывает;
 - часть query parameters проверяется вручную и возвращает другой error shape.
@@ -183,13 +194,14 @@ Profile fields нормализуют реквизиты через `trim`; пу
 |---|---|
 | `groups.service.ts` | Группы, membership, роли, privacy реквизитов, условия удаления |
 | `expenses.service.ts` | CRUD расходов, split rows, FX, cash settlements, audit/history |
-| `balances.service.ts` | Загрузка ledger, group debt и overview aggregation |
+| `balances.service.ts` | Чтение транзакционной проекции positions, debt simplification и overview aggregation |
 | `settlements.service.ts` | Погашение долга, reset, история расчётов |
 | `invites.service.ts` | Создание, отзыв, чтение и принятие invite |
 | `exchange.service.ts` | Курсы ЦБ, DB cache, fallback и конвертация |
 | `statistics-history.service.ts` | Атомарная запись lifetime-фактов |
 | `statistics.service.ts` | Current/historical metrics и money totals |
 | `achievements.service.ts` | Оценка, сохранение и notification lifecycle достижений |
+| `activity.service.ts` | Membership-first account feed, stable keyset pagination |
 | `feedback.service.ts` | Создание и admin listing feedback |
 
 ## Жизненный цикл расхода
@@ -235,7 +247,11 @@ sequenceDiagram
 
 ## Балансы и settlements
 
-`computeGroupDebts` параллельно читает все расходы со splits, все settlements и всех участников группы. Затем чистая функция строит raw positions и greedy simplified graph.
+`computeGroupDebts` читает компактную транзакционную проекцию
+`group_member_positions` и membership names, затем чистая функция строит raw и
+детерминированный greedy simplified graph. PostgreSQL triggers обновляют
+positions в той же транзакции, что expenses, splits и settlements; source ledger
+остаётся rebuildable source of truth.
 
 Manual settlement разрешён только если в текущем simplified graph существует прямое ребро:
 
@@ -243,7 +259,7 @@ Manual settlement разрешён только если в текущем simpl
 session user -> selected recipient
 ```
 
-Сумма может быть меньше suggested debt, но не больше. Проверка долга выполняется повторно внутри Serializable transaction и предотвращает два одновременно успешных превышающих платежа. Конфликт `P2034` автоматически повторяется до трёх раз с exponential backoff и jitter; исчерпанный retry превращается в контролируемый HTTP 409.
+Сумма может быть меньше suggested debt, но не больше. Проверка долга выполняется повторно внутри Serializable transaction и предотвращает два одновременно успешных превышающих платежа. Распознанный serialization/deadlock conflict автоматически повторяется до трёх раз с exponential backoff и jitter; исчерпанный retry превращается в контролируемый HTTP 409.
 
 Reset удаляет только строки `expenseId IS NULL`. Cash settlements считаются частью расходов и остаются.
 
@@ -258,6 +274,8 @@ Membership использует soft state `isActive`.
 - admin не может выйти сам;
 - другого участника можно удалить только при его нулевом raw balance;
 - группу можно удалить только при нулевых raw balances всех участников.
+- БД также запрещает более 100 active members, deactivation с ненулевой
+  position и удаление membership, которая нужна финансовой истории.
 
 `getGroup` возвращает реквизиты только самого пользователя и текущих creditors, которым он должен по simplified graph. У остальных пользователей обнуляются и membership overrides, и profile defaults.
 
@@ -265,10 +283,10 @@ Membership использует soft state `isActive`.
 
 Любой active member может получить active invite; отзывать может только admin. Токен — UUID без дефисов, TTL и лимита использований нет. Sequential acceptance идемпотентен для уже active member и реактивирует inactive member как `MEMBER`. Выход создателя invite не отзывает токен автоматически.
 
-DB constraint «не более одного active invite на группу» отсутствует. Инвариант
-сейчас обеспечивается Serializable create/revoke/accept transactions с bounded
-retry: concurrent get-or-create возвращает один active invite, а гонка accept с
-revoke завершается согласованным отозванным состоянием.
+Partial unique index гарантирует не более одного `revoked = false` invite на
+группу. Serializable create/revoke/accept transactions с bounded retry дополняют
+это ограничение: concurrent get-or-create возвращает один active invite, а гонка
+accept с revoke завершается согласованным отозванным состоянием.
 
 ## Activity и lifetime statistics
 
@@ -276,7 +294,11 @@ Activity охватывает expense CRUD, settlement create/reset, member add/
 
 `entityType/entityId` являются логическими ссылками без foreign key. Поэтому событие удаления/изменения операции остаётся в журнале до удаления группы.
 
-Lifetime facts пишутся внутри тех же transactions, что group/expense/settlement/invite use cases. Statistics endpoint читает historical facts; achievements объединяют current metrics, historical maxima и persisted unlocks.
+Lifetime facts пишутся внутри тех же transactions, что group/expense/settlement/invite use cases. PostgreSQL triggers синхронно поддерживают компактные
+`user_statistic_metrics`, `user_statistic_currencies` и `user_statistic_money`.
+Statistics endpoint читает эти projections в одном `RepeatableRead` snapshot;
+achievements в таком же согласованном snapshot объединяют projected historical
+metrics и persisted unlocks, не сканируя текущий ledger.
 
 Achievement GET только вычисляет progress. POST unseen сохраняет новые unlocks и атомарно забирает уведомления через conditional `UPDATE ... RETURNING`, поэтому два клиента не получают одну строку одновременно.
 
@@ -288,24 +310,36 @@ Achievement GET только вычисляет progress. POST unseen сохра
 | Manual settlement create | Serializable |
 | Group delete | Serializable |
 | Member add/remove | Serializable |
-| Group create/update | Default PostgreSQL isolation |
+| Group create | Serializable |
+| Group update | Serializable |
 | Invite create/revoke/accept | Serializable |
 | Settlement reset | Serializable |
 
 Все перечисленные Serializable operations используют общий bounded retry для
-Prisma `P2034`. Внутритранзакционные rechecks защищают membership, edit
+Prisma `P2034`, SQLSTATE `40001` и точно распознанного PostgreSQL deadlock
+`40P01`. Group-scoped mutations до row writes берут тот же per-group advisory
+transaction lock, что database invariants; это задаёт единый lock order, а retry
+остаётся страховкой от неизбежных transient conflicts. Внутритранзакционные rechecks защищают membership, edit
 permissions, debt amount, admin role, zero-balance deletion, invite state и
 settlement reset. Реальные E2E/DB race-сценарии фиксируют согласованное конечное
 состояние для invite create/revoke/accept, member add/remove, expense против
-member removal и settlement create/reset. Основные незакрытые concurrency cases:
+member removal и settlement create/reset.
 
-- POST operations не используют idempotency key, поэтому network retry способен продублировать group, expense, settlement или feedback;
-- FX lookup выполняется до финансовой transaction.
+Create group, expense, manual settlement и feedback принимают необязательный
+`Idempotency-Key` (8..128 символов из `[A-Za-z0-9._:-]`). Текущий web-клиент
+посылает его всегда и сохраняет тот же ключ после неоднозначной network/5xx-ошибки.
+Idempotency record, ресурс и все его activity/statistic side effects фиксируются
+одной transaction; scope ключа — `(principalId, operation, key)`, TTL — 24 часа.
+Повтор с тем же canonical payload возвращает исходный ресурс, с другим — HTTP 409.
+Header оставлен необязательным для обратной совместимости внешних v1-клиентов.
+
+Оставшийся concurrency case: FX lookup выполняется до финансовой transaction.
 
 ## Ошибки
 
 `handleServiceError` сопоставляет строковый `Error.message` с HTTP статусом:
 
+- 400 — невалидный opaque cursor или размер страницы;
 - 403 — insufficient permissions;
 - 404 — отсутствующая сущность или invite;
 - 409 — состояние группы/участника конфликтует с операцией;
@@ -329,15 +363,39 @@ member removal и settlement create/reset. Основные незакрытые
 
 ## Производительность
 
-- group balance каждый раз читает полную историю расходов/splits/settlements;
-- group details дополнительно строит весь debt graph ради privacy реквизитов;
-- overview eager-load-ит полную историю всех active groups пользователя;
-- settlements не пагинируются;
-- activity ограничена последними 50 без continuation;
+- group balance и group detail читают компактные positions, но каждый раз заново
+  строят simplified graph;
+- overview одним membership-first SQL-запросом строит prefix intervals по
+  positions active groups и возвращает только агрегированные incident edges
+  текущего пользователя; работа и размер ответа всё ещё растут с числом его
+  active groups, counterparties и currencies;
+- group list использует индексируемый membership feed key и cursor pagination по
+  `(groupUpdatedAt, groupId)`, поэтому следующая страница читается прямым keyset
+  scan без сортировки всех memberships аккаунта;
+- expenses и settlements используют индексированную cursor pagination по
+  `(date, createdAt, id)`;
+- group activity ограничена последними 50 без continuation; account activity
+  имеет cursor continuation страницами до 50 и выбирает индексный top-N каждой
+  active group через `LATERAL`, прежде чем собрать общую страницу;
 - feedback ограничен 100 без continuation;
-- expense list использует offset pagination, page 1..100000, по 30 строк;
-- statistics/achievements выполняют наборы параллельных запросов без application cache;
+- statistics/achievements читают compact projections без application cache;
 - cash settlements и некоторые statistic facts записываются последовательно внутри transaction;
-- request body size и domain array size отдельно не ограничены.
+- splits, cash payments и active group members ограничены 100, но общий HTTP body
+  limit явно не задаётся приложением.
 
-При равных net balances порядок greedy counterparty может зависеть от порядка строк из БД, поскольку ledger queries не имеют стабильного `orderBy`. Raw balances остаются теми же, но simplified edge может измениться.
+При равных net balances упрощение использует стабильный tie-break по user ID,
+поэтому одинаковое экономическое состояние даёт одинаковые simplified edges.
+
+## DB-level переносимость и восстановление
+
+Критические правила не зависят только от Prisma/Zod. PostgreSQL запрещает
+неположительные деньги/курсы, неверные currency codes, несовпадающие суммы
+original/base splits, некорректные percentage splits, неактивных участников,
+self/cross-group settlement, неверную форму cash settlement, изменение ключевой
+financial identity, более 100 active members и несколько active invites.
+Per-group advisory transaction lock сериализует cross-row validation даже для
+нового writer-а, который использует `READ COMMITTED`.
+
+`npm run db:rebuild-projections` атомарно пересобирает balance/statistics
+projections из source tables с блокировкой конкурирующих source writes. Для
+локальной защищённой test DB существует `npm run db:rebuild-projections:test`.

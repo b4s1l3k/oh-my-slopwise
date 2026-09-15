@@ -1,9 +1,6 @@
 import { auth } from "@/lib/auth"
 import { buildProfileStatistics } from "@/lib/statistics"
-import {
-  getHistoricalUserStatistics,
-  getHistoricalUserMoneyStatistics,
-} from "@/services/statistics.service"
+import { getHistoricalUserStatisticsSnapshot } from "@/services/statistics.service"
 import { NextResponse } from "next/server"
 import { toProfileStatisticsResponse } from "@/lib/api/v1/response-mappers"
 
@@ -17,11 +14,8 @@ export async function GET() {
   // Их достаточно (миграция бэкфилит существующие данные, новые пишутся сразу
   // в транзакции), поэтому отдельный расчёт «текущих» показателей и слияние
   // с ними не нужны — результат тот же.
-  const [lifetime, money] = await Promise.all([
-    getHistoricalUserStatistics(session.user.id),
-    getHistoricalUserMoneyStatistics(session.user.id),
-  ])
+  const { metrics, money } = await getHistoricalUserStatisticsSnapshot(session.user.id)
   return NextResponse.json(
-    toProfileStatisticsResponse(buildProfileStatistics(lifetime, money))
+    toProfileStatisticsResponse(buildProfileStatistics(metrics, money))
   )
 }

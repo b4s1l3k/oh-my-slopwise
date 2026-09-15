@@ -41,7 +41,7 @@ function backendApiBaseUrl(): string {
   const configured = process.env.BACKEND_API_BASE_URL?.trim()
   if (configured) return absoluteUrl(configured).replace(/\/+$/, "")
 
-  const webOrigin = process.env.AUTH_URL?.trim() || process.env.NEXTAUTH_URL?.trim()
+  const webOrigin = process.env.AUTH_URL?.trim()
   if (!webOrigin) {
     throw new Error("BACKEND_API_BASE_URL or AUTH_URL must be configured")
   }

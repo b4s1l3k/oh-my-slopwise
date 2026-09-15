@@ -1,27 +1,32 @@
 "use client"
 
 import {
+  infiniteQueryOptions,
   mutationOptions,
-  queryOptions,
   type QueryClient,
+  useInfiniteQuery,
   useMutation,
-  useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
 import { groupsApi } from "@/lib/api/client/groups-api"
 import { invalidateCreatedGroup } from "@/hooks/api/invalidation"
 import { apiQueryKeys } from "@/hooks/api/query-keys"
-import { mapGroupViewModel } from "@/lib/api/view-models/mappers"
+import {
+  mapGroupPageViewModel,
+  mapGroupViewModel,
+} from "@/lib/api/view-models/mappers"
 
 export type CreateGroupCommand = Parameters<typeof groupsApi.createGroup>[0]
 
-export function groupsQueryOptions() {
-  return queryOptions({
+export function groupsInfiniteQueryOptions() {
+  return infiniteQueryOptions({
     queryKey: apiQueryKeys.groups.all,
-    queryFn: async ({ signal }) => {
-      const response = await groupsApi.getGroups({ signal })
-      return response.groups.map(mapGroupViewModel)
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam, signal }) => {
+      const response = await groupsApi.getGroups(pageParam, { signal })
+      return mapGroupPageViewModel(response)
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   })
 }
 
@@ -38,7 +43,10 @@ export function createGroupMutationOptions(
 }
 
 export function useGroups() {
-  return useQuery(groupsQueryOptions())
+  return useInfiniteQuery({
+    ...groupsInfiniteQueryOptions(),
+    select: (data) => data.pages.flatMap((page) => page.groups),
+  })
 }
 
 export function useCreateGroup() {

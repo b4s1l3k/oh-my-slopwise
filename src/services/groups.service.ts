@@ -1,11 +1,17 @@
 import { prisma } from "@/lib/db"
 import { computeGroupDebts } from "@/services/balances.service"
 import { runSerializableTransaction } from "@/lib/serializable-transaction"
+import { lockGroupInvariants } from "@/lib/group-invariant-lock"
 import {
   recordGroupCreated,
   recordGroupMemberJoined,
 } from "@/services/statistics-history.service"
 import type { CreateGroupInput, UpdateGroupInput } from "@/lib/validations/group"
+import { MAX_GROUP_MEMBERS } from "@/lib/domain-limits"
+import { decodeInstantCursor, encodeInstantCursor } from "@/lib/instant-cursor"
+import { runIdempotentCommand } from "@/lib/idempotent-command"
+
+const GROUP_PAGE_SIZE = 30
 
 const memberSelect = {
   id: true,
@@ -40,9 +46,33 @@ const memberWithRequisitesSelect = {
   },
 } as const
 
-export async function getUserGroups(userId: string) {
-  const memberships = await prisma.groupMember.findMany({
-    where: { userId, isActive: true },
+export async function getUserGroups(
+  userId: string,
+  cursor?: string | null,
+  pageSize = GROUP_PAGE_SIZE
+) {
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+    throw new Error("INVALID_PAGE_SIZE")
+  }
+  const decodedCursor = cursor == null ? null : decodeInstantCursor(cursor)
+  const membershipCursorFilter = decodedCursor
+    ? {
+        OR: [
+          { groupUpdatedAt: { lt: decodedCursor.updatedAt } },
+          {
+            groupUpdatedAt: decodedCursor.updatedAt,
+            groupId: { lt: decodedCursor.id },
+          },
+        ],
+      }
+    : {}
+
+  const rows = await prisma.groupMember.findMany({
+    where: {
+      userId,
+      isActive: true,
+      ...membershipCursorFilter,
+    },
     include: {
       group: {
         include: {
@@ -51,9 +81,24 @@ export async function getUserGroups(userId: string) {
         },
       },
     },
-    orderBy: { group: { updatedAt: "desc" } },
+    orderBy: [
+      { groupUpdatedAt: "desc" },
+      { groupId: "desc" },
+    ],
+    take: pageSize + 1,
   })
-  return memberships.map((m) => m.group)
+  const pageRows = rows.slice(0, pageSize)
+  const groups = pageRows.map((membership) => membership.group)
+  const lastMembership = pageRows.at(-1)
+  return {
+    groups,
+    nextCursor: rows.length > pageSize && lastMembership
+      ? encodeInstantCursor({
+          updatedAt: lastMembership.groupUpdatedAt,
+          id: lastMembership.groupId,
+        })
+      : null,
+  }
 }
 
 export async function getGroup(groupId: string, userId: string) {
@@ -96,30 +141,48 @@ export async function getGroup(groupId: string, userId: string) {
   }
 }
 
-export async function createGroup(userId: string, data: CreateGroupInput) {
-  const memberIds = [...new Set([userId, ...data.memberIds])]
-  const existingUsers = await prisma.user.count({ where: { id: { in: memberIds } } })
-  if (existingUsers !== memberIds.length) throw new Error("USER_NOT_FOUND")
-
-  return prisma.$transaction(async (tx) => {
-    const group = await tx.group.create({
-      data: {
-        name: data.name,
-        description: data.description,
-        type: data.type,
-        currency: data.currency,
-        createdById: userId,
-        members: {
-          create: memberIds.map((id) => ({
-            userId: id,
-            role: id === userId ? "ADMIN" : "MEMBER",
-          })),
+export async function createGroup(
+  userId: string,
+  data: CreateGroupInput,
+  idempotencyKey?: string
+) {
+  return runIdempotentCommand({
+    principalId: userId,
+    operation: "CREATE_GROUP",
+    key: idempotencyKey,
+    request: data,
+    prepare: async () => {
+      const memberIds = [...new Set([userId, ...data.memberIds])]
+      if (memberIds.length > MAX_GROUP_MEMBERS) throw new Error("GROUP_MEMBER_LIMIT")
+      const existingUsers = await prisma.user.count({ where: { id: { in: memberIds } } })
+      if (existingUsers !== memberIds.length) throw new Error("USER_NOT_FOUND")
+      return memberIds
+    },
+    execute: async (tx, memberIds) => {
+      const group = await tx.group.create({
+        data: {
+          name: data.name,
+          description: data.description,
+          type: data.type,
+          currency: data.currency,
+          createdById: userId,
+          members: {
+            create: memberIds.map((id) => ({
+              userId: id,
+              role: id === userId ? "ADMIN" : "MEMBER",
+            })),
+          },
         },
-      },
-      include: { members: { select: memberSelect } },
-    })
-    await recordGroupCreated(tx, group, memberIds)
-    return group
+        include: { members: { select: memberSelect } },
+      })
+      await recordGroupCreated(tx, group, memberIds)
+      return { result: group, resourceId: group.id }
+    },
+    load: (tx, resourceId) =>
+      tx.group.findUnique({
+        where: { id: resourceId },
+        include: { members: { select: memberSelect } },
+      }),
   })
 }
 
@@ -129,7 +192,8 @@ export async function updateGroup(
   data: UpdateGroupInput
 ) {
   await assertAdmin(groupId, userId)
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
+    await lockGroupInvariants(tx, groupId)
     const admin = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     })
@@ -158,6 +222,7 @@ export async function deleteGroup(groupId: string, userId: string) {
   await assertAdmin(groupId, userId)
 
   await runSerializableTransaction(async (tx) => {
+    await lockGroupInvariants(tx, groupId)
     const admin = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     })
@@ -181,6 +246,7 @@ export async function addMember(groupId: string, adminId: string, memberId: stri
   if (!user) throw new Error("USER_NOT_FOUND")
 
   return runSerializableTransaction(async (tx) => {
+    await lockGroupInvariants(tx, groupId)
     const admin = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId: adminId } },
     })
@@ -190,6 +256,10 @@ export async function addMember(groupId: string, adminId: string, memberId: stri
       where: { groupId_userId: { groupId, userId: memberId } },
     })
     if (existing?.isActive) throw new Error("MEMBER_ALREADY_ACTIVE")
+    const activeMemberCount = await tx.groupMember.count({
+      where: { groupId, isActive: true },
+    })
+    if (activeMemberCount >= MAX_GROUP_MEMBERS) throw new Error("GROUP_MEMBER_LIMIT")
 
     const member = await tx.groupMember.upsert({
       where: { groupId_userId: { groupId, userId: memberId } },
@@ -223,6 +293,7 @@ export async function removeMember(groupId: string, adminId: string, memberId: s
   })
 
   return runSerializableTransaction(async (tx) => {
+    await lockGroupInvariants(tx, groupId)
     const actor = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId: adminId } },
     })

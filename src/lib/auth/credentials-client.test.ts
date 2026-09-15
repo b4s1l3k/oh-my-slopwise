@@ -45,7 +45,7 @@ describe("authenticateCredentialsThroughApi", () => {
     expect(options?.signal).toBeInstanceOf(AbortSignal)
   })
 
-  it("derives the legacy same-origin API URL from AUTH_URL", async () => {
+  it("derives the same-origin API URL from AUTH_URL", async () => {
     vi.stubEnv("BACKEND_API_BASE_URL", "")
     vi.stubEnv("AUTH_URL", "https://web.example.test/")
     fetchMock.mockResolvedValue(new Response(null, { status: 401 }))
@@ -107,7 +107,6 @@ describe("authenticateCredentialsThroughApi", () => {
   it("requires an explicit backend or web origin", async () => {
     vi.stubEnv("BACKEND_API_BASE_URL", "")
     vi.stubEnv("AUTH_URL", "")
-    vi.stubEnv("NEXTAUTH_URL", "")
 
     await expect(authenticateCredentialsThroughApi({
       email: "user@example.com",

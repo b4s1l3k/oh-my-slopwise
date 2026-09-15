@@ -7,6 +7,7 @@ import {
   toExpensePageResponse,
   toExpenseResponse,
 } from "@/lib/api/v1/response-mappers"
+import { readIdempotencyKey } from "@/lib/idempotency-key"
 
 
 type Params = { params: Promise<{ id: string }> }
@@ -17,14 +18,10 @@ export async function GET(req: Request, { params }: Params) {
 
   const { id: groupId } = await params
   const url = new URL(req.url)
-  const page = Number(url.searchParams.get("page") ?? 1)
-  // Верхняя граница защищает от гигантского OFFSET (page=9e15 и т.п.)
-  if (!Number.isSafeInteger(page) || page < 1 || page > 100_000) {
-    return NextResponse.json({ error: "Invalid page" }, { status: 400 })
-  }
+  const cursor = url.searchParams.get("cursor")
 
   try {
-    const result = await expensesService.getGroupExpenses(groupId, session.user.id, page)
+    const result = await expensesService.getGroupExpenses(groupId, session.user.id, cursor)
     return NextResponse.json(toExpensePageResponse(result))
   } catch (e) {
     return handleServiceError(e)
@@ -43,7 +40,12 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   try {
-    const expense = await expensesService.createExpense(groupId, session.user.id, parsed.data)
+    const expense = await expensesService.createExpense(
+      groupId,
+      session.user.id,
+      parsed.data,
+      readIdempotencyKey(req)
+    )
     return NextResponse.json(toExpenseResponse(expense), { status: 201 })
   } catch (e) {
     return handleServiceError(e)

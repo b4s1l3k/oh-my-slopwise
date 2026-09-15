@@ -36,6 +36,7 @@
           "homeGroups": 1,
           "tripGroups": 2,
           "coupleGroups": 1,
+          "otherGroups": 1,
           "maxGroupMembers": 6,
           "maxGroupExpenses": 10
         },
@@ -116,6 +117,7 @@
           "homeGroups": 0,
           "tripGroups": 0,
           "coupleGroups": 0,
+          "otherGroups": 0,
           "maxGroupMembers": 0,
           "maxGroupExpenses": 0
         },
@@ -196,6 +198,7 @@
           "homeGroups": 0,
           "tripGroups": 0,
           "coupleGroups": 0,
+          "otherGroups": 0,
           "maxGroupMembers": 0,
           "maxGroupExpenses": 0
         },

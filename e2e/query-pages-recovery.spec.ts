@@ -38,16 +38,16 @@ test.describe("query page recovery", () => {
     expect(attempts).toBe(failedAttempts + 1)
   })
 
-  test("retries the activity page after its group query fails", async ({ page }) => {
+  test("retries the activity page after its account feed query fails", async ({ page }) => {
     let attempts = 0
     let recover = false
-    await page.route("**/api/v1/groups", async (route) => {
+    await page.route("**/api/v1/activity", async (route) => {
       attempts += 1
       if (!recover) {
         await fulfillJson(route, { error: { code: "INTERNAL_ERROR" } }, 500)
         return
       }
-      await fulfillJson(route, { groups: [] })
+      await fulfillJson(route, { activities: [], nextCursor: null })
     })
 
     await loginTo(page, "/activity")
@@ -158,7 +158,7 @@ test.describe("query page recovery", () => {
       }
       await route.continue()
     })
-    await page.route(`**/api/v1/groups/${groupId}/expenses?*`, async (route) => {
+    await page.route(`**/api/v1/groups/${groupId}/expenses**`, async (route) => {
       expenseAttempts += 1
       if (expenseAttempts <= 2) {
         await fulfillJson(route, { error: { code: "INTERNAL_ERROR" } }, 500)

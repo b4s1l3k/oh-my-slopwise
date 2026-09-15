@@ -107,7 +107,7 @@ describeDatabase("money persistence boundaries", () => {
     ).toBe(0)
   })
 
-  it("persists the exact equal-split minor-unit allocation when amount is smaller than participant count", async () => {
+  it("rejects an equal split that would persist zero-valued participant rows", async () => {
     const [admin, firstMember, secondMember] = await Promise.all([
       createUser("Minor unit admin"),
       createUser("Minor unit first"),
@@ -120,34 +120,24 @@ describeDatabase("money persistence boundaries", () => {
       memberIds: [firstMember.id, secondMember.id],
     })
 
-    const expense = await createExpense(group.id, admin.id, {
-      title: "One minor unit",
-      amount: 1,
-      currency: "RUB",
-      date: operationDate,
-      paidById: admin.id,
-      splitType: "EQUAL",
-      splits: [
-        { userId: admin.id },
-        { userId: firstMember.id },
-        { userId: secondMember.id },
-      ],
-    })
+    await expect(
+      createExpense(group.id, admin.id, {
+        title: "One minor unit",
+        amount: 1,
+        currency: "RUB",
+        date: operationDate,
+        paidById: admin.id,
+        splitType: "EQUAL",
+        splits: [
+          { userId: admin.id },
+          { userId: firstMember.id },
+          { userId: secondMember.id },
+        ],
+      })
+    ).rejects.toThrow("CONVERTED_AMOUNT_TOO_SMALL")
 
-    const splits = await prisma.expenseSplit.findMany({
-      where: { expenseId: expense.id },
-      select: { userId: true, amount: true, amountBase: true },
-    })
-    expect(splits.find((split) => split.userId === admin.id)).toMatchObject({ amount: 1, amountBase: 1 })
-    expect(splits.find((split) => split.userId === firstMember.id)).toMatchObject({
-      amount: 0,
-      amountBase: 0,
-    })
-    expect(splits.find((split) => split.userId === secondMember.id)).toMatchObject({
-      amount: 0,
-      amountBase: 0,
-    })
-    expect(splits.reduce((sum, split) => sum + (split.amountBase ?? 0), 0)).toBe(1)
+    expect(await prisma.expense.count({ where: { groupId: group.id } })).toBe(0)
+    expect(await prisma.expenseSplit.count({ where: { expense: { groupId: group.id } } })).toBe(0)
   })
 
   it("allocates equal FX fractions deterministically by request order and preserves the converted total", async () => {

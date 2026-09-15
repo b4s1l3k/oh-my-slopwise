@@ -30,6 +30,3 @@ export const updateProfileSchema = z
     avatarUrl: avatarUrlSchema,
   })
   .merge(requisitesSchema)
-
-export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
-export type RequisitesInput = z.infer<typeof requisitesSchema>

@@ -2,6 +2,10 @@ import { z } from "zod"
 import { SUPPORTED_CURRENCIES } from "@/lib/currencies"
 import { calculateSplits } from "@/lib/utils/split-calculator"
 import { isValidCalendarDate } from "@/lib/utils/calendar-date"
+import {
+  MAX_EXPENSE_CASH_PAYMENTS,
+  MAX_EXPENSE_PARTICIPANTS,
+} from "@/lib/domain-limits"
 
 const splitParticipant = z.object({
   userId: z.string().min(1),
@@ -26,10 +30,14 @@ export const createExpenseSchema = z
     paidById: z.string().min(1, "Укажите плательщика"),
     notes: z.string().max(1000).optional(),
     splitType: z.enum(["EQUAL", "EXACT", "PERCENTAGE"]),
-    splits: z.array(splitParticipant).min(1, "Нужен хотя бы один участник"),
+    splits: z
+      .array(splitParticipant)
+      .min(1, "Нужен хотя бы один участник")
+      .max(MAX_EXPENSE_PARTICIPANTS, "В расходе может быть не больше 100 участников"),
     // Наличные, которые участники вернули плательщику на месте (атомарно создаются расчёты)
     cashPayments: z
       .array(z.object({ userId: z.string().min(1), amount: z.number().int().positive() }))
+      .max(MAX_EXPENSE_CASH_PAYMENTS, "В расходе может быть не больше 100 наличных платежей")
       .optional(),
   })
   .superRefine((data, ctx) => {

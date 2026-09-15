@@ -16,10 +16,6 @@ export const apiQueryKeys = {
     overview: ["overview"] as const,
     group: (groupId: string) => ["balances", groupId] as const,
   },
-  settlements: {
-    all: ["settlements"] as const,
-    group: (groupId: string) => ["settlements", groupId] as const,
-  },
   users: {
     profile: ["profile"] as const,
     searches: ["users", "search"] as const,

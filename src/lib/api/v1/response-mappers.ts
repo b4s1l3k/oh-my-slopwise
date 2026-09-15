@@ -4,6 +4,7 @@ import type {
   AchievementDto,
   AchievementUnlockDto,
   AchievementUnlocksResponseDto,
+  AccountActivityPageResponseDto,
   ActivityDto,
   ActivityListResponseDto,
   BalanceOverviewDto,
@@ -44,6 +45,7 @@ import { isSupportedCurrency } from "@/lib/currencies"
 import { isValidCalendarDate } from "@/lib/utils/calendar-date"
 
 type TimestampSource = Date | string
+type DecimalSource = { toNumber(): number }
 
 type UserSummarySource = {
   id: string
@@ -93,8 +95,8 @@ type ExpenseSource = {
   title: string
   amount: number
   currency: string
-  amountBase: number | null
-  customRate: number | null
+  amountBase: number
+  customRate: number | DecimalSource | null
   category: string | null
   splitType: "EQUAL" | "EXACT" | "PERCENTAGE"
   date: TimestampSource
@@ -108,8 +110,7 @@ type ExpenseSource = {
     expenseId: string
     userId: string
     amount: number
-    amountBase: number | null
-    share: number | null
+    amountBase: number
     percentage: number | null
     user: UserSummarySource
   }>
@@ -117,20 +118,20 @@ type ExpenseSource = {
     id: string
     amount: number
     currency: string
-    amountBase: number | null
+    amountBase: number
     fromUser: UserNameSource
   }>
 }
 
 type SettlementSource = {
   id: string
-  groupId: string | null
+  groupId: string
   expenseId: string | null
   fromUserId: string
   toUserId: string
   amount: number
   currency: string
-  amountBase: number | null
+  amountBase: number
   date: TimestampSource
   notes: string | null
   createdAt: TimestampSource
@@ -140,7 +141,7 @@ type SettlementSource = {
 
 type ActivitySource = {
   id: string
-  groupId: string | null
+  groupId: string
   actorId: string
   type: ActivityDto["type"]
   entityType: string
@@ -148,6 +149,13 @@ type ActivitySource = {
   metadata: unknown
   createdAt: TimestampSource
   actor: UserNameSource
+}
+
+type AccountActivitySource = ActivitySource & {
+  group: {
+    id: string
+    name: string
+  }
 }
 
 type FeedbackSource = {
@@ -332,7 +340,9 @@ function toExpenseDto(expense: ExpenseSource): ExpenseDto {
     amount: expense.amount,
     currency: expense.currency,
     amountBase: expense.amountBase,
-    customRate: expense.customRate,
+    customRate: expense.customRate === null || typeof expense.customRate === "number"
+      ? expense.customRate
+      : expense.customRate.toNumber(),
     category: expense.category,
     splitType: expense.splitType,
     date: toTimestamp(expense.date),
@@ -347,7 +357,6 @@ function toExpenseDto(expense: ExpenseSource): ExpenseDto {
       userId: split.userId,
       amount: split.amount,
       amountBase: split.amountBase,
-      share: split.share,
       percentage: split.percentage,
       user: toUserSummaryDto(split.user),
     })),
@@ -408,8 +417,14 @@ function toGroupBalancesDto(balances: GroupBalancesDto): GroupBalancesDto {
   }
 }
 
-export function toGroupListResponse(groups: GroupSource[]): GroupListResponseDto {
-  return { groups: groups.map((group) => toGroupDto(group, false)) }
+export function toGroupListResponse(result: {
+  groups: GroupSource[]
+  nextCursor: string | null
+}): GroupListResponseDto {
+  return {
+    groups: result.groups.map((group) => toGroupDto(group, false)),
+    nextCursor: result.nextCursor,
+  }
 }
 
 export function toGroupResponse(group: GroupSource): GroupResponseDto {
@@ -430,13 +445,11 @@ export function toExpenseResponse(expense: ExpenseSource): ExpenseResponseDto {
 
 export function toExpensePageResponse(result: {
   expenses: ExpenseSource[]
-  total: number
-  hasNext: boolean
+  nextCursor: string | null
 }): ExpensePageResponseDto {
   return {
     expenses: result.expenses.map(toExpenseDto),
-    total: result.total,
-    hasNext: result.hasNext,
+    nextCursor: result.nextCursor,
   }
 }
 
@@ -469,9 +482,12 @@ export function toSettlementResponse(settlement: SettlementSource): SettlementRe
 }
 
 export function toSettlementListResponse(
-  settlements: SettlementSource[]
+  result: { settlements: SettlementSource[]; nextCursor: string | null }
 ): SettlementListResponseDto {
-  return { settlements: settlements.map(toSettlementDto) }
+  return {
+    settlements: result.settlements.map(toSettlementDto),
+    nextCursor: result.nextCursor,
+  }
 }
 
 export function toResetSettlementsResponse(
@@ -511,17 +527,37 @@ export function toRequisitesResponse(requisites: RequisitesDto): RequisitesRespo
 
 export function toActivityListResponse(activities: ActivitySource[]): ActivityListResponseDto {
   return {
-    activities: activities.map((activity) => ({
-      id: activity.id,
-      groupId: activity.groupId,
-      actorId: activity.actorId,
-      type: activity.type,
-      entityType: activity.entityType,
-      entityId: activity.entityId,
-      metadata: toActivityMetadataDto(activity),
-      createdAt: toTimestamp(activity.createdAt),
-      actor: toUserNameDto(activity.actor),
+    activities: activities.map(toActivityDto),
+  }
+}
+
+function toActivityDto(activity: ActivitySource): ActivityDto {
+  return {
+    id: activity.id,
+    groupId: activity.groupId,
+    actorId: activity.actorId,
+    type: activity.type,
+    entityType: activity.entityType,
+    entityId: activity.entityId,
+    metadata: toActivityMetadataDto(activity),
+    createdAt: toTimestamp(activity.createdAt),
+    actor: toUserNameDto(activity.actor),
+  }
+}
+
+export function toAccountActivityPageResponse(result: {
+  activities: AccountActivitySource[]
+  nextCursor: string | null
+}): AccountActivityPageResponseDto {
+  return {
+    activities: result.activities.map((activity) => ({
+      ...toActivityDto(activity),
+      group: {
+        id: activity.group.id,
+        name: activity.group.name,
+      },
     })),
+    nextCursor: result.nextCursor,
   }
 }
 

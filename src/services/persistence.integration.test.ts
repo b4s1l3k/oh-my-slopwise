@@ -6,12 +6,15 @@ import {
 } from "@/services/achievements.service"
 import { createExpense, deleteExpense, getExpense, updateExpense } from "@/services/expenses.service"
 import { createGroup, deleteGroup, getGroup, removeMember } from "@/services/groups.service"
-import { acceptInvite, revokeInvite } from "@/services/invites.service"
 import {
-  getCurrentUserStatistics,
+  acceptInvite,
+  getOrCreateInvite,
+  revokeInvite,
+} from "@/services/invites.service"
+import { createSettlement } from "@/services/settlements.service"
+import {
   getHistoricalUserStatistics,
   getHistoricalUserMoneyStatistics,
-  getUserStatistics,
 } from "@/services/statistics.service"
 
 const runDatabaseTests = process.env.RUN_DB_INTEGRATION_TESTS === "true"
@@ -69,22 +72,12 @@ describeDatabase("achievement persistence and group deletion", () => {
 
     await deleteGroup(group.id, admin.id)
 
-    const [current, historical, money, achievements] = await Promise.all([
-      getCurrentUserStatistics(admin.id, now),
+    const [historical, money, achievements] = await Promise.all([
       getHistoricalUserStatistics(admin.id, now),
       getHistoricalUserMoneyStatistics(admin.id),
       getUserAchievements(admin.id, now),
     ])
 
-    expect(current).toMatchObject({
-      activeGroups: 0,
-      groupsCreated: 0,
-      expensesCreated: 0,
-      expensesParticipated: 0,
-      expensesPaid: 0,
-      settlementsReceived: 0,
-      currenciesUsed: 0,
-    })
     expect(historical).toMatchObject({
       activeGroups: 1,
       groupsCreated: 1,
@@ -154,23 +147,16 @@ describeDatabase("achievement persistence and group deletion", () => {
 
     await deleteExpense(expense.id, admin.id)
 
-    const [expenseRows, splitRows, cashRows, current, moneyAfterExpenseDeletion] = await Promise.all([
+    const [expenseRows, splitRows, cashRows, moneyAfterExpenseDeletion] = await Promise.all([
       prisma.expense.count({ where: { id: expense.id } }),
       prisma.expenseSplit.count({ where: { expenseId: expense.id } }),
       prisma.settlement.count({ where: { id: cashSettlementId } }),
-      getCurrentUserStatistics(admin.id, now),
       getHistoricalUserMoneyStatistics(admin.id),
     ])
     expect({ expenseRows, splitRows, cashRows }).toEqual({
       expenseRows: 0,
       splitRows: 0,
       cashRows: 0,
-    })
-    expect(current).toMatchObject({
-      expensesCreated: 0,
-      expensesParticipated: 0,
-      expensesPaid: 0,
-      settlementsReceived: 0,
     })
     expect(moneyAfterExpenseDeletion).toEqual({
       spent: [{ currency: "RUB", amount: 24_000 }],
@@ -255,83 +241,34 @@ describeDatabase("achievement persistence and group deletion", () => {
       }),
     ])
 
-    const group = await prisma.group.create({
-      data: {
-        name: "Cascade integration group",
-        type: "TRIP",
-        currency: "RUB",
-        createdById: admin.id,
-        members: {
-          create: [
-            { userId: admin.id, role: "ADMIN" },
-            { userId: member.id, role: "MEMBER" },
-          ],
-        },
-        invites: {
-          create: {
-            token: `${testPrefix}-invite`,
-            createdById: admin.id,
-          },
-        },
-      },
+    const group = await createGroup(admin.id, {
+      name: "Cascade integration group",
+      type: "TRIP",
+      currency: "RUB",
+      memberIds: [member.id],
     })
-
-    const expense = await prisma.expense.create({
-      data: {
-        groupId: group.id,
-        paidById: admin.id,
-        createdById: admin.id,
-        title: "Integration expense",
-        amount: 20_000,
-        amountBase: 20_000,
-        splitType: "EQUAL",
-        date: now,
-        splits: {
-          create: [
-            { userId: admin.id, amount: 10_000, amountBase: 10_000 },
-            { userId: member.id, amount: 10_000, amountBase: 10_000 },
-          ],
-        },
-      },
+    await getOrCreateInvite(group.id, admin.id)
+    const expense = await createExpense(group.id, admin.id, {
+      paidById: admin.id,
+      title: "Integration expense",
+      amount: 20_000,
+      currency: "RUB",
+      splitType: "EQUAL",
+      date: "2026-08-01",
+      splits: [
+        { userId: admin.id },
+        { userId: member.id },
+      ],
     })
-
-    const settlement = await prisma.settlement.create({
-      data: {
-        groupId: group.id,
-        fromUserId: member.id,
-        toUserId: admin.id,
-        amount: 10_000,
-        amountBase: 10_000,
-        date: now,
-      },
+    const settlement = await createSettlement(member.id, {
+      groupId: group.id,
+      toUserId: admin.id,
+      amount: 10_000,
+      currency: "RUB",
+      date: "2026-08-01",
     })
-
-    const activity = await prisma.activityLog.create({
-      data: {
-        groupId: group.id,
-        actorId: admin.id,
-        type: "EXPENSE_CREATED",
-        entityType: "expense",
-        entityId: expense.id,
-        metadata: { title: expense.title },
-      },
-    })
-
-    const statisticsBefore = await getUserStatistics(admin.id, now)
-    expect(statisticsBefore).toMatchObject({
-      activeGroups: 1,
-      groupsCreated: 1,
-      invitesCreated: 1,
-      expensesCreated: 1,
-      expensesParticipated: 1,
-      expensesPaid: 1,
-      settlementsReceived: 1,
-      equalSplits: 1,
-      currenciesUsed: 1,
-      uniquePeople: 1,
-      maxGroupMembers: 2,
-      maxGroupExpenses: 1,
-      tripGroups: 1,
+    const activity = await prisma.activityLog.findFirstOrThrow({
+      where: { groupId: group.id, entityId: expense.id },
     })
 
     await collectUnseenAchievementUnlocks(admin.id, now)
@@ -381,22 +318,6 @@ describeDatabase("achievement persistence and group deletion", () => {
     expect(users).toBe(2)
     expect(achievements).toBeGreaterThan(0)
 
-    const statisticsAfter = await getUserStatistics(admin.id, now)
-    expect(statisticsAfter).toMatchObject({
-      activeGroups: 0,
-      groupsCreated: 0,
-      invitesCreated: 0,
-      expensesCreated: 0,
-      expensesParticipated: 0,
-      expensesPaid: 0,
-      settlementsReceived: 0,
-      equalSplits: 0,
-      currenciesUsed: 0,
-      uniquePeople: 0,
-      maxGroupMembers: 0,
-      maxGroupExpenses: 0,
-      tripGroups: 0,
-    })
 
     const achievementsAfter = await getUserAchievements(admin.id, now)
     expect(

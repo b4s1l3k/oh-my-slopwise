@@ -82,6 +82,14 @@ describe("createExpenseSchema — cashPayments", () => {
     expect(createExpenseSchema.safeParse({ ...base, cashPayments: [] }).success).toBe(true)
   })
 
+  it("число наличных платежей ограничено", () => {
+    const payments = Array.from({ length: 101 }, (_, index) => ({
+      userId: `user-${index}`,
+      amount: 1,
+    }))
+    expect(createExpenseSchema.safeParse({ ...base, cashPayments: payments }).success).toBe(false)
+  })
+
   it("весь расход можно вернуть наличными, если плательщик не участвует в разбивке", () => {
     const r = createExpenseSchema.safeParse({
       ...base,
@@ -156,6 +164,11 @@ describe("createExpenseSchema — базовые поля", () => {
 
   it("нужен хотя бы один участник", () => {
     expect(issues({ ...base, splits: [] }).some((e) => e.path === "splits")).toBe(true)
+  })
+
+  it("число участников расхода ограничено", () => {
+    const splits = Array.from({ length: 101 }, (_, index) => ({ userId: `user-${index}` }))
+    expect(createExpenseSchema.safeParse({ ...base, splits }).success).toBe(false)
   })
 
   it("дубликат участника в splits отклоняется", () => {

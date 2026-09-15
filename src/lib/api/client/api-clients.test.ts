@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { activityApi } from "@/lib/api/client/activity-api"
 import { expensesApi } from "@/lib/api/client/expenses-api"
 import { feedbackApi } from "@/lib/api/client/feedback-api"
 import { groupsApi } from "@/lib/api/client/groups-api"
@@ -39,7 +40,16 @@ const settlementCommand = {
 }
 
 const cases: ClientCase[] = [
-  { name: "lists groups", invoke: groupsApi.getGroups, url: "/api/v1/groups" },
+  {
+    name: "lists an account activity page",
+    invoke: () => activityApi.getActivity("cursor/value", 25),
+    url: "/api/v1/activity?cursor=cursor%2Fvalue&limit=25",
+  },
+  {
+    name: "lists a group page",
+    invoke: () => groupsApi.getGroups("cursor/value"),
+    url: "/api/v1/groups?cursor=cursor%2Fvalue",
+  },
   {
     name: "gets a group",
     invoke: () => groupsApi.getGroup("group/id"),
@@ -64,11 +74,6 @@ const cases: ClientCase[] = [
     invoke: () => groupsApi.deleteGroup("group-1"),
     url: "/api/v1/groups/group-1",
     method: "DELETE",
-  },
-  {
-    name: "gets group activity",
-    invoke: () => groupsApi.getActivity("group-1"),
-    url: "/api/v1/groups/group-1/activity",
   },
   {
     name: "updates group requisites",
@@ -114,14 +119,9 @@ const cases: ClientCase[] = [
     method: "DELETE",
   },
   {
-    name: "gets an expense",
-    invoke: () => expensesApi.getExpense("expense-1"),
-    url: "/api/v1/expenses/expense-1",
-  },
-  {
     name: "lists group expenses",
-    invoke: () => expensesApi.getGroupExpenses("group-1", 2),
-    url: "/api/v1/groups/group-1/expenses?page=2",
+    invoke: () => expensesApi.getGroupExpenses("group-1", "cursor/value"),
+    url: "/api/v1/groups/group-1/expenses?cursor=cursor%2Fvalue",
   },
   {
     name: "creates an expense",
@@ -159,11 +159,6 @@ const cases: ClientCase[] = [
     name: "gets group balances",
     invoke: () => settlementsApi.getGroupBalances("group-1"),
     url: "/api/v1/groups/group-1/balances",
-  },
-  {
-    name: "gets group settlements",
-    invoke: () => settlementsApi.getGroupSettlements("group-1"),
-    url: "/api/v1/groups/group-1/settlements",
   },
   {
     name: "resets group settlements",

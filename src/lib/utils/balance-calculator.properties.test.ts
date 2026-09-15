@@ -200,7 +200,7 @@ describe("calculateSimplifiedDebts deterministic properties", () => {
     expect(simplified.length).toBeLessThanOrEqual(nonZeroParticipants - 1)
   })
 
-  it("uses first-seen insertion order as the tie-break for equal positions", () => {
+  it("uses immutable user IDs as the tie-break for equal positions", () => {
     const visibilityRows: Expense[] = [
       { paidById: "user-0", splits: [{ userId: "user-0", amount: 0 }] },
       { paidById: "user-3", splits: [{ userId: "user-3", amount: 0 }] },
@@ -227,15 +227,15 @@ describe("calculateSimplifiedDebts deterministic properties", () => {
     expect(calculateSimplifiedDebts([...visibilityRows, ...financialRows], [], names).simplified)
       .toEqual([
         {
-          fromUserId: "user-3",
-          fromUserName: "User 3",
+          fromUserId: "user-2",
+          fromUserName: "User 2",
           toUserId: "user-0",
           toUserName: "User 0",
           amount: 100,
         },
         {
-          fromUserId: "user-2",
-          fromUserName: "User 2",
+          fromUserId: "user-3",
+          fromUserName: "User 3",
           toUserId: "user-1",
           toUserName: "User 1",
           amount: 100,

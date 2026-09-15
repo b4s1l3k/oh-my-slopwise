@@ -143,7 +143,7 @@ describe("v1 response mappers", () => {
     }
 
     for (const member of [
-      toGroupListResponse([group]).groups[0].members[0],
+      toGroupListResponse({ groups: [group], nextCursor: null }).groups[0].members[0],
       toGroupResponse(group).group.members[0],
       toGroupMemberResponse(sensitiveMember).member,
     ]) {

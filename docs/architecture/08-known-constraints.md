@@ -1,6 +1,7 @@
 # Ограничения и развитие
 
-Этот документ отделяет фактическую архитектуру от целевого улучшения. Он не означает, что перечисленные изменения уже реализованы.
+Этот документ отделяет фактическую архитектуру от целевых улучшений. Исправленные
+риски здесь не перечисляются как ограничения.
 
 ## Сводка ограничений
 
@@ -8,216 +9,133 @@
 
 | Область | Текущее состояние | Риск |
 |---|---|---|
-| Production migrations | Custom psql runner без distributed lock/checksum verification | Параллельный rollout или crash window может вызвать duplicate DDL failure, рассинхронизацию history/schema или блокировку startup |
-| CI residual gaps | Typecheck, contract, golden, coverage, build и standalone E2E уже блокируют publish; нет lint, dependency/security scan, Docker image startup и custom migrator smoke/recovery test | Регрессия упаковки image, supply-chain проблема или сбой migration entrypoint могут проявиться только после публикации |
-| Application admin | Роль выводится только из `ADMIN_EMAIL` при login | Регистрация незанятого admin email или старый JWT создают неочевидный access lifecycle |
-| Observability | Client генерирует `X-Request-ID`, но backend не прокидывает его в structured logs; metrics, traces и app health отсутствуют | Production failure трудно обнаружить и расследовать |
-| Legacy `amountBase` | Nullable, migration не выполняла backfill | Старые foreign-currency строки могут интерпретировать original amount как group currency |
+| Production migrations | Custom `psql` runner имеет advisory lock, checksum verification и атомарную history transaction, но нет automatic image/recovery smoke; все SQL-файлы принудительно transactional | Неподдерживаемая non-transactional DDL или неизвестный recovery case может заблокировать startup |
+| CI residual gaps | Typecheck, contract, golden, coverage, build и standalone E2E блокируют publish; нет lint, dependency/security scan, Docker startup и migrator recovery smoke | Ошибка упаковки image, supply-chain или entrypoint может проявиться после публикации |
+| Application admin | Роль выводится из `ADMIN_EMAIL` при login | Регистрация незанятого admin email и старый JWT создают неочевидный access lifecycle |
+| Observability | Есть liveness/readiness и client request ID, но нет structured request logs, metrics, tracing, alerting и SLO | Production failure трудно расследовать и измерять |
+| Idempotency | Create endpoints не принимают idempotency key | Network/mobile retry может продублировать group, expense, manual settlement или feedback |
 
 ### Средний приоритет
 
 | Область | Текущее состояние | Риск |
 |---|---|---|
-| Balance queries | Полная история группы/всех групп загружается на каждый расчёт | Рост latency и памяти вместе с историей |
-| API contracts | Response DTO/mappers добавлены, но несколько несовместимых error shapes и legacy DB-поля в v1 contract сохранены | Сложное единое error UX; v2 должен получить новый client-oriented contract |
-| Frontend cache | Централизованная correctness-first invalidation использует широкие prefixes и повторные запросы без optimistic updates/normalized entities | При росте UI и данных mutation может вызывать избыточный refetch; cache не очищается явно при смене identity |
-| UI error states | Часть ошибок отображается как отсутствие данных | Ошибка баланса может выглядеть как отсутствие долгов |
-| Frontend hotspots | Group page/settings/expense form объединяют несколько ответственностей | Высокая цена изменения и сложность тестирования |
-| Invite concurrency | Нет unique active invite на группу | Одновременно могут существовать несколько действующих токенов |
-| Idempotency | POST endpoints не имеют idempotency key | Network retry может продублировать операцию |
-| Settlement history | Все settlements без pagination | Неограниченный размер ответа группы |
-| Currency rates | Float и неограниченно старый/будущий nearest fallback | Ошибка точности или устаревший fallback без provenance |
+| Balance overview | Один SQL не загружает full ledger и возвращает только incident edges, но охватывает все active groups без account-level projection и pagination counterparties | DB work и response size растут с числом групп, контрагентов и валют |
+| Residual feeds | Account activity и group list имеют cursor continuation; group activity ограничена 50, feedback — 100 без continuation | Старые group-audit/admin-feedback rows недоступны через API |
+| API errors | Success DTO изолированы, но error envelopes неоднородны, domain codes — строки | Новый backend и клиенты сложнее типизировать одинаково |
+| Frontend cache | Широкая correctness-first invalidation; identity cache явно не очищается | Избыточный refetch и риск stale state при смене пользователя без полной навигации |
+| Frontend hotspots | Group page/settings/expense form объединяют несколько ответственностей | Высокая цена изменения и сложность component testing |
+| FX correctness | Rates хранятся как decimal, но TypeScript runtime считает через `number`; cached fallback не ограничен возрастом, XML response date не проверяется | Возможны binary rounding и экономически устаревший курс без provenance |
+| Audit coverage | Activity не охватывает все mutations | Неполный operational audit trail |
 
 ### Низкий/накопительный приоритет
 
-- `Friendship` и legacy `ExpenseSplit.share` не используются;
-- `src/types/index.ts` почти не переиспользуется, transport DTO всё ещё дублируются в components;
-- Zustand и часть UI dependencies не используются;
-- user search через общий query hook отменяет устаревший request, но не имеет debounce;
-- theme state не синхронизируется между mounted navigation variants;
+- user search не имеет debounce;
+- theme state не синхронизируется между одновременно mounted navigation variants;
 - accessibility semantics неполны для custom filters/toggles/toasts;
-- destructive UI использует native `confirm` наряду с Radix dialogs;
-- нет общего server-side authorization helper/policy; web API client уже возвращает DTO
-  и нормализует transport-ошибки в `ApiError`.
-- UI не использует `GET /expenses/:id`, `GET /groups/:id/settlements`, group description, expense category и avatar editing/rendering; часть statistics response также не показывается. Settlement date/notes записываются, но отдельная история manual settlements в UI отсутствует.
+- destructive UI смешивает native `confirm` и Radix dialogs;
+- нет единого typed authorization policy/domain error layer;
+- часть простых routes обращается к Prisma напрямую;
+- UI пока не показывает отдельную settlement history, group description и часть
+  уже хранимых expense/profile полей;
+- `kind` lifetime-факта остаётся soft dictionary: формат проверяет БД, но список
+  допустимых значений контролирует приложение.
 
-## Корректность отдельных сценариев
+## Корректность и принятая семантика
 
-### Изменение валюты расхода с наличным расчётом
+### Финансовые данные и membership
 
-Связанный cash settlement считается фактом передачи денег. При update расхода его `amount`, `currency` и `amountBase` больше не переписываются; за исправленным расходом следуют только payer, business date и notes. Проверка допустимости наличного платежа выполняется по `amountBase`, поэтому старая и новая валюты не сравниваются напрямую.
+Calendar dates хранятся PostgreSQL `DATE`, instants — `TIMESTAMPTZ(3)`, rates —
+`NUMERIC(20,10)`, деньги — integer minor units. Expense total округляется один
+раз, а FX remainder детерминированно распределяется между splits; БД требует
+равенство и original, и base totals.
 
-При смене payer `recordSettlementHistory` удаляет прежние `MONEY_RETURNED` и `SETTLEMENT_RECEIVED` этого settlement и оставляет оба факта только у актуального получателя.
+`group_member_positions` синхронно поддерживается triggers. БД не позволяет
+создать финансовую операцию для inactive member, деактивировать участника с
+ненулевой position или удалить membership, нужную истории. Изменение старого
+расхода также не может вернуть баланс вышедшему пользователю.
 
-### Membership после выхода
+Cash settlement — неизменяемый факт переданных денег: его amount/currency/base
+не следуют за исправлением расхода. Разрешено менять получателя вслед за новым
+payer, дату и notes; aggregate constraints требуют существующий split и не дают
+превысить его суммы.
 
-Нулевой raw balance проверяется при деактивации участника. После изменения/удаления расхода и reset manual settlements общий `assertNoInactiveMemberBalances` повторно проверяет всех inactive users внутри той же транзакции; операция откатывается, если вернула кому-либо ненулевую позицию.
+### Deterministic debt и requisites privacy
 
-Если участник погасил долю cash settlement-ом и вышел, linked expense может стать нередактируемым: новые splits разрешены только active users, а сохранённый cash settlement всё ещё требует долю inactive sender. Reactivation или удаление expense разблокирует сценарий.
+Упрощение долгов сортирует равные positions по user ID. Group detail и balances
+строят graph из одной authoritative projection, поэтому одинаковое состояние
+даёт одинакового creditor и одинаковое раскрытие реквизитов. Это детерминизм,
+но greedy algorithm не обещает математически минимальное число переводов для
+любой возможной сети.
 
-### FX rounding
+### Lifetime statistics и achievements
 
-Expense total округляется один раз. Split values сначала переводятся с floor, затем FX remainder детерминированно распределяется по наибольшей дробной части и исходному порядку участников. Для каждой успешно записанной операции выполняется `sum(split.amountBase) = expense.amountBase`.
+Lifetime facts переживают удаление source entity. Исправление существующего
+expense/settlement заменяет актуализируемые факты; record maxima и уже открытые
+achievements намеренно не уменьшаются. PostgreSQL projections обновляются в той
+же транзакции и могут быть атомарно пересобраны через
+`npm run db:rebuild-projections`.
 
-Если positive total или positive split не представим хотя бы одной минимальной единицей валюты группы, операция отклоняется с `CONVERTED_AMOUNT_TOO_SMALL`; `amountBase = 0` для положительной записанной суммы не допускается.
-
-### Date-only semantics
-
-Expense и Settlement всё ещё используют `DateTime` в БД, однако boundary трактует поле как business date: принимает только `YYYY-MM-DD`, формы не выполняют browser timezone conversion, backend нормализует дату в UTC midnight, а expense list форматирует день в UTC. Поэтому выбранный день не сдвигается в UTC-negative timezone. В будущем схема БД должна перейти на явный date-only тип; будущие даты пока разрешены и немедленно участвуют в текущем balance, as-of фильтрации нет.
-
-Exchange parser не сверяет дату корневого XML-документа с requested day. Для будущей/особой даты источник может вернуть другой фактический набор, который будет сохранён под requested date и станет постоянным exact cache hit.
-
-### Achievement notification
-
-Achievement progress GET не изменяет БД. Явный POST unseen сохраняет unlocks и забирает pending rows одним conditional `UPDATE ... RETURNING`; конкурентные устройства получают непересекающиеся наборы уведомлений.
-
-### Stable simplified debts
-
-Raw balances детерминированы, но при равных creditor/debtor values выбор counterparty зависит от порядка map insertion. DB queries ledger-а не задают стабильный `orderBy`, поэтому simplified edges могут измениться при том же экономическом состоянии.
-
-Group projection и balances — независимые GETs, каждый отдельно строит graph. При равных позициях один запрос теоретически может выбрать и раскрыть реквизиты другого creditor, чем тот, которого показывает balance UI.
-
-### Lifetime semantics
-
-Lifetime facts намеренно остаются после удаления source entity. При update часть фактов корректируется, часть record maxima не уменьшается. Это гибрид «исторического достижения» и «актуализируемого факта», поэтому каждый новый `kind` должен явно определить lifecycle create/update/delete.
-
-Profile `groups.other` вычисляется как исторический максимум active groups минус lifetime HOME/TRIP/COUPLE counts, хотя существует отдельный `GROUP_JOINED_OTHER` fact. При группах разных типов в разные периоды значение OTHER может быть занижено.
-
-Concurrent group/member changes при default isolation могут вычислить рекорд active/member count по неполному snapshot. `keepRecordMaximum` предотвращает уменьшение уже видимого максимума, но не гарантирует наблюдение общей конкурентной величины.
-
-`CURRENCY` fact имеет несимметричный lifecycle: update последней живой траты в валюте запускает reconciliation и может удалить факт, а delete последней траты reconciliation не вызывает и сохраняет факт как lifetime history.
-
-Migration backfill считает PEER и group-size по всем membership rows без `isActive` и temporal overlap, тогда как runtime join logic использует одновременно active members. Исторически восстановленные metrics могут иметь другую семантику.
-
-### Password representation
-
-Registration требует минимум восемь символов и максимум 72 UTF-8 байта. Login повторяет byte guard до `bcrypt.compare`, поэтому suffix за bcrypt-limit не может пройти как эквивалент существующего пароля.
-
-### Group ordering timestamp
-
-Список групп сортируется по `Group.updatedAt DESC`, но timestamp обновляется непоследовательно. Expense CRUD, manual settlement, non-empty reset, member remove, invite accept и group update его меняют; direct addMember, invite create/revoke, requisites update и zero-count reset — нет. Поле не является строгим временем последней доменной активности.
+Achievement GET не пишет в БД. Явный POST unseen синхронизирует unlocks и
+атомарно claims notification rows, поэтому два клиента не получают одно
+уведомление.
 
 ## Масштабирование
 
-Текущая архитектура оптимальна для небольшого personal deployment. При росте данных первыми bottleneck станут:
+Уже устранены full-ledger balance reads, unbounded group/expense/settlement
+feeds, account activity `1 + N` и недетерминированные debt ties. Rates хранятся
+как decimal, но вычисления текущего TypeScript backend всё ещё используют
+binary floating point. Ближайшие bottleneck:
 
-1. overview, загружающий все операции всех active groups;
-2. group detail, повторно строящий debt graph ради privacy реквизитов;
-3. achievements, одновременно читающие current и historical metrics;
-4. activity screen с fan-out `1 + N` HTTP requests;
-5. последовательная запись cash settlements/statistic facts внутри transactions;
-6. offset pagination на больших значениях page.
+1. account overview без account-level projection и pagination counterparties;
+2. group activity и admin feedback без continuation;
+3. синхронная последовательная запись большого числа cash/statistic facts;
+4. transaction contention одной популярной группы;
+5. отсутствие нагрузочного baseline и production telemetry.
 
-Возможные направления эволюции:
+Следующие безопасные улучшения:
 
-- server-side aggregates/materialized positions с контролем consistency;
-- cursor pagination;
-- единый batch activity endpoint;
-- cache/version для debt graph;
-- bounded queries и limits;
-- разделение synchronous ledger write и производной аналитики через outbox/worker, если появится соответствующая инфраструктура.
+- cursor-pagination group activity и admin feedback;
+- account overview projection с отдельно сохранёнными totals и paginated
+  counterparty balances;
+- typed application commands/results, domain errors и persistence ports;
+- idempotency records для create commands;
+- outbox для audit/analytics, только после ADR о consistency/freshness;
+- load tests и индексы, подтверждённые `EXPLAIN (ANALYZE, BUFFERS)`, а не
+  добавленные предположительно.
 
-Последний пункт меняет consistency model и требует отдельного ADR; сейчас синхронная transaction обеспечивает более простую корректность.
+Микросервисы сейчас не нужны: Group/Expense/Settlement/Balance образуют один
+strongly-consistent financial aggregate. Их преждевременное разделение добавит
+distributed transactions и больше способов получить drift. Сначала следует
+выделить модульный Kotlin Core с одной PostgreSQL и стабильным API; отдельными
+сервисами позже могут стать только доказанно независимые FX/notification/reporting
+контуры.
 
 ## Границы модульности
 
-Service layer достаточно явный для текущего размера, но не полностью изолирован:
+Frontend уже зависит от generated OpenAPI DTO только внутри API clients/hooks и
+маппит transport models в UI view models. Backend всё ещё связан с Prisma внутри
+services, authorization checks частично дублируются, а строковые ошибки не
+образуют типизированный application API.
 
-- Prisma import находится непосредственно в services;
-- несколько API routes сами выполняют persistence operations;
-- service sources остаются Prisma-shaped; HTTP mapper-ы уже изолируют их от transport DTO, но persistence/application граница ещё не выделена;
-- authorization checks дублируются;
-- error codes представлены строками `Error.message`.
+Следующая внутренняя граница до переписывания:
 
-Если backend продолжит расти, естественная следующая граница — application services с типизированными commands/results, typed domain errors и persistence ports. Это можно сделать внутри Next.js без немедленного выделения отдельного процесса.
+```text
+route -> command mapper/validator -> application handler
+      -> persistence port -> Prisma adapter
+      -> explicit result -> response mapper
+```
 
-В текущем repository нет Kotlin, Gradle, Spring Boot, WebFlux или gRPC. Создание Kotlin backend будет отдельной миграцией архитектуры и runtime topology, а не описанием существующей системы.
+Это можно вводить вертикальными срезами без смены runtime. В будущем Kotlin
+backend должен реализовать тот же OpenAPI/golden/E2E contract, а не копировать
+Prisma-модели или текущую структуру таблиц.
 
-## Frontend evolution
+## Операционные следующие шаги
 
-Первые три шага декомпозиции реализованы:
+1. вынести migration runner в singleton deploy job и добавить recovery runbook;
+2. добавить Docker image startup/health/migration smoke в CI;
+3. structured logs с request ID, metrics/traces и alerts;
+4. backup/restore drill и projection reconciliation runbook;
+5. startup validation env и осознанный sizing pool/replicas.
 
-- HTTP transport и typed domain clients находятся в `src/lib/api/client`;
-- query keys и mutation invalidation централизованы в `src/hooks/api`;
-- feature pages/components получают server state и выполняют mutations только через
-  thin hooks; прямые imports API clients и TanStack Query запрещены архитектурным тестом.
-
-Следующая безопасная последовательность:
-
-1. разделение ExpenseForm на command state, split editor, currency editor и submit adapter;
-2. разделение group workspace/settings на меньшие feature components;
-3. явные единообразные loading/error/empty states;
-4. browser component tests и несколько критических E2E flows;
-5. проверка cache invalidation matrix при каждом новом write use case;
-6. accessibility audit custom controls и mobile layouts.
-
-Текущий слой hooks не содержит router, toast, Auth.js session или form state. Эти
-UI-specific действия остаются в components; hooks владеют только query/mutation options,
-`AbortSignal`, pagination и cache consistency. Исключения из запрета прямого React Query
-в UI ограничены корневым provider и `AchievementWatcher`, подписанным на MutationCache.
-
-## Security evolution
-
-Для публичного deployment нужны:
-
-- controlled application-admin provisioning;
-- email normalization/verification;
-- rate limits и abuse monitoring;
-- password reset и session revocation policy;
-- local-only callback URL validation;
-- security headers/CSP;
-- image domain allowlist;
-- request/array bounds;
-- CSRF/origin policy для custom mutation routes;
-- audit событий admin и изменения реквизитов.
-
-## Operations evolution
-
-Минимальный production hardening:
-
-1. добавить unit/typecheck в CI до image publish;
-2. добавить app health/readiness и smoke test image;
-3. заменить custom migration engine на `prisma migrate deploy` либо добавить locking/checksum/recovery runbook;
-4. копировать `public` в runner image;
-5. настроить structured logs, request ID, error reporting и основные latency/error metrics;
-6. документировать backup/restore и rollback;
-7. задать environment validation при startup.
-
-## Расхождения существующей документации
-
-### `CLAUDE.md`
-
-- проект назван monorepo, фактически это single Next.js application;
-- упомянут `GroupMember.defaultRate`, которого нет;
-- `paymentRequisites` представлен как поле, хотя есть три профильных и три membership override поля;
-- Friendship фактически не создаётся автоматически;
-- cash payment хранится не в split, а в связанном Settlement;
-- manual settlement хранится в group currency, cash settlement — в expense currency плюс `amountBase`;
-- floating point отсутствует у денежных сумм, но используется для rates/customRate;
-- не весь persistence проходит через services;
-- greedy simplification не доказывает глобальный минимум переводов.
-
-### `SETUP.md`
-
-- перечисляет четыре валюты вместо текущих двадцати;
-- описывает `amountBase` и overview как всегда RUB, хотя это валюта расчёта каждой группы;
-- использует старые имена `NEXTAUTH_*`, тогда как `.env.example` использует `AUTH_*`;
-- автоматическая migration применима к Docker entrypoint, но не к `npm run dev`.
-
-### Prisma comments
-
-Комментарии некоторых `amountBase` полей говорят «в рублях». Фактическая семантика — settlement currency группы.
-
-## Плановые документы
-
-`docs/localization-plan.md` и `docs/receipt-scanning-plan.md` являются roadmap, не current-state architecture.
-
-### Локализация
-
-Пока отсутствуют `next-intl`, locale-prefixed routes, message catalogs, persisted locale и language switcher. Текущий root layout фиксирован на `lang="ru"`, сообщения преимущественно русские.
-
-### Сканирование чеков
-
-Пока отсутствуют QR decoder, ФНС integration, receipt transport/domain models, UI загрузки/распределения позиций и соответствующие tests/env. Расход создаётся только через ручную форму.
-
-Перед реализацией каждого плана нужно обновить его assumptions относительно текущих API contracts, currencies, component decomposition и security boundaries.
+Плановые `docs/localization-plan.md` и `docs/receipt-scanning-plan.md` не являются
+реализованной архитектурой.

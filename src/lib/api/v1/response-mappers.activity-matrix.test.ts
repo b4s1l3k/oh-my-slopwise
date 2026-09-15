@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest"
 import type { ActivityDto } from "@contract/v1"
-import { toActivityListResponse } from "./response-mappers"
+import {
+  toAccountActivityPageResponse,
+  toActivityListResponse,
+} from "./response-mappers"
 
 const timestamp = "2026-09-13T10:00:00.000Z"
 
 function mapMetadata(type: ActivityDto["type"], metadata: unknown) {
   return toActivityListResponse([{
     id: "activity",
-    groupId: null,
+    groupId: "group",
     actorId: "alice",
     type,
     entityType: "entity",
@@ -85,5 +88,53 @@ describe("activity response metadata allowlist matrix", () => {
     expect(mapMetadata("MEMBER_ADDED", { viaInvite: false })).toEqual({ viaInvite: false })
     expect(mapMetadata("MEMBER_REMOVED", { selfLeft: false })).toEqual({ selfLeft: false })
     expect(mapMetadata("SETTLEMENTS_RESET", { removed: 0 })).toEqual({ removed: 0 })
+  })
+})
+
+describe("account activity page response", () => {
+  it("adds only the public group summary and preserves the opaque cursor exactly", () => {
+    const persistedGroup: { id: string; name: string } & Record<string, unknown> = {
+      id: "group",
+      name: "Trip",
+      secret: "must-not-leak",
+    }
+    const result = toAccountActivityPageResponse({
+      activities: [{
+        id: "activity",
+        groupId: "group",
+        actorId: "alice",
+        type: "GROUP_UPDATED",
+        entityType: "group",
+        entityId: "group",
+        metadata: { name: "Trip", privateToken: "must-not-leak" },
+        createdAt: timestamp,
+        actor: { id: "alice", name: "Alice" },
+        group: persistedGroup,
+      }],
+      nextCursor: "opaque-cursor",
+    })
+
+    expect(result).toEqual({
+      activities: [{
+        id: "activity",
+        groupId: "group",
+        actorId: "alice",
+        type: "GROUP_UPDATED",
+        entityType: "group",
+        entityId: "group",
+        metadata: { name: "Trip" },
+        createdAt: timestamp,
+        actor: { id: "alice", name: "Alice" },
+        group: { id: "group", name: "Trip" },
+      }],
+      nextCursor: "opaque-cursor",
+    })
+  })
+
+  it("returns an exact empty final page", () => {
+    expect(toAccountActivityPageResponse({ activities: [], nextCursor: null })).toEqual({
+      activities: [],
+      nextCursor: null,
+    })
   })
 })

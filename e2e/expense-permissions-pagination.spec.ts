@@ -116,17 +116,15 @@ test.describe("expense permissions and pagination", () => {
 
     const first = await apiJson<{
       expenses: Array<{ title: string }>
-      total: number
-      hasNext: boolean
-    }>(page, `/api/v1/groups/${groupId}/expenses?page=1`)
+      nextCursor: string | null
+    }>(page, `/api/v1/groups/${groupId}/expenses`)
+    expect(first.nextCursor).toEqual(expect.any(String))
     const second = await apiJson<{
       expenses: Array<{ title: string }>
-      total: number
-      hasNext: boolean
-    }>(page, `/api/v1/groups/${groupId}/expenses?page=2`)
-    expect(first).toMatchObject({ total: 31, hasNext: true })
+      nextCursor: string | null
+    }>(page, `/api/v1/groups/${groupId}/expenses?cursor=${encodeURIComponent(first.nextCursor!)}`)
     expect(first.expenses).toHaveLength(30)
-    expect(second).toMatchObject({ total: 31, hasNext: false })
+    expect(second.nextCursor).toBeNull()
     expect(second.expenses).toHaveLength(1)
     expect(new Set([...first.expenses, ...second.expenses].map((expense) => expense.title)).size).toBe(31)
   })

@@ -28,7 +28,6 @@ export function invalidateDeletedGroup(queryClient: QueryClient, groupId: string
   void queryClient.removeQueries({ queryKey: apiQueryKeys.groups.detail(groupId) })
   void queryClient.removeQueries({ queryKey: apiQueryKeys.expenses.list(groupId) })
   void queryClient.removeQueries({ queryKey: apiQueryKeys.balances.group(groupId) })
-  void queryClient.removeQueries({ queryKey: apiQueryKeys.settlements.group(groupId) })
 }
 
 export function invalidateExpenseData(queryClient: QueryClient, groupId: string): void {
@@ -67,7 +66,6 @@ export function invalidateSettlementData(queryClient: QueryClient, groupId: stri
   invalidate(queryClient, apiQueryKeys.groups.detail(groupId))
   invalidate(queryClient, apiQueryKeys.balances.group(groupId))
   invalidate(queryClient, apiQueryKeys.balances.overview)
-  invalidate(queryClient, apiQueryKeys.settlements.group(groupId))
   invalidate(queryClient, apiQueryKeys.groups.activity)
   invalidate(queryClient, apiQueryKeys.users.achievements)
   invalidate(queryClient, apiQueryKeys.users.statistics)
@@ -97,7 +95,6 @@ export function invalidateProfileData(queryClient: QueryClient): void {
   invalidate(queryClient, apiQueryKeys.groups.all)
   invalidate(queryClient, apiQueryKeys.expenses.all)
   invalidate(queryClient, apiQueryKeys.balances.all)
-  invalidate(queryClient, apiQueryKeys.settlements.all)
   invalidate(queryClient, apiQueryKeys.balances.overview)
   invalidate(queryClient, apiQueryKeys.groups.activity)
   invalidate(queryClient, apiQueryKeys.users.searches)

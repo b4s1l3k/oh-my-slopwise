@@ -1,6 +1,8 @@
 import authConfig from "@/lib/auth.config"
 import { evaluateAchievements, type AchievementMetrics } from "@/lib/achievements"
 import { handleServiceError } from "@/lib/api-errors"
+import { decodeActivityCursor, encodeActivityCursor } from "@/lib/activity-cursor"
+import { toAccountActivityPageResponse } from "@/lib/api/v1/response-mappers"
 import { buildProfileStatistics, type UserMoneyStatistics } from "@/lib/statistics"
 import { calculateSimplifiedDebts } from "@/lib/utils/balance-calculator"
 import { parseCalendarDate } from "@/lib/utils/calendar-date"
@@ -285,6 +287,76 @@ function calculateBalance(input: JsonObject): JsonValue {
       Object.fromEntries(Object.entries(names).map(([id, name]) => [id, string(name, `userNames.${id}`)]))
     )
   )
+}
+
+function accountActivityPage(input: JsonObject): JsonValue {
+  const userId = string(input.userId, "userId")
+  const pageSize = number(input.pageSize, "pageSize")
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 50) {
+    throw new Error("INVALID_PAGE_SIZE")
+  }
+  const cursorValue = input.cursor
+  if (cursorValue !== null && typeof cursorValue !== "string") {
+    throw new Error("INVALID_CURSOR")
+  }
+  const cursor = cursorValue === null ? null : decodeActivityCursor(cursorValue)
+  const activeGroupIds = new Set(
+    array(input.memberships, "memberships")
+      .map((item, index) => object(item, `memberships[${index}]`))
+      .filter((membership) =>
+        string(membership.userId, "membership.userId") === userId &&
+        boolean(membership.isActive, "membership.isActive")
+      )
+      .map((membership) => string(membership.groupId, "membership.groupId"))
+  )
+  const activities = array(input.activities, "activities").map((item, index) => {
+    const activity = object(item, `activities[${index}]`)
+    const actor = object(activity.actor ?? null, `activities[${index}].actor`)
+    const group = object(activity.group ?? null, `activities[${index}].group`)
+    const createdAtValue = string(activity.createdAt, `activities[${index}].createdAt`)
+    const createdAt = new Date(createdAtValue)
+    if (!Number.isFinite(createdAt.getTime()) || createdAt.toISOString() !== createdAtValue) {
+      throw new Error("INVALID_ACTIVITY_TIMESTAMP")
+    }
+    return {
+      id: string(activity.id, `activities[${index}].id`),
+      groupId: string(activity.groupId, `activities[${index}].groupId`),
+      actorId: string(activity.actorId, `activities[${index}].actorId`),
+      type: string(activity.type, `activities[${index}].type`) as Parameters<
+        typeof toAccountActivityPageResponse
+      >[0]["activities"][number]["type"],
+      entityType: string(activity.entityType, `activities[${index}].entityType`),
+      entityId: string(activity.entityId, `activities[${index}].entityId`),
+      metadata: activity.metadata,
+      createdAt,
+      actor: {
+        id: string(actor.id, `activities[${index}].actor.id`),
+        name: string(actor.name, `activities[${index}].actor.name`),
+      },
+      group: {
+        id: string(group.id, `activities[${index}].group.id`),
+        name: string(group.name, `activities[${index}].group.name`),
+      },
+    }
+  })
+    .filter((activity) => activeGroupIds.has(activity.groupId))
+    .filter((activity) => !cursor ||
+      activity.createdAt < cursor.createdAt ||
+      (activity.createdAt.getTime() === cursor.createdAt.getTime() && activity.id < cursor.id)
+    )
+    .sort((left, right) =>
+      right.createdAt.getTime() - left.createdAt.getTime() ||
+      (right.id < left.id ? -1 : right.id > left.id ? 1 : 0)
+    )
+
+  const page = activities.slice(0, pageSize)
+  const last = page.at(-1)
+  return json(toAccountActivityPageResponse({
+    activities: page,
+    nextCursor: activities.length > pageSize && last
+      ? encodeActivityCursor(last)
+      : null,
+  }))
 }
 
 function applySettlement(input: JsonObject): JsonValue {
@@ -580,6 +652,8 @@ async function executeLegacy(operation: string, input: JsonObject): Promise<Json
       return selectNearestRate(input)
     case "balance.calculate":
       return calculateBalance(input)
+    case "activity.page":
+      return accountActivityPage(input)
     case "settlement.apply":
       return applySettlement(input)
     case "settlement.validateCommand": {

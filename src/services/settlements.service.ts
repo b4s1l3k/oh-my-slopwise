@@ -1,12 +1,16 @@
 import { prisma } from "@/lib/db"
 import { parseCalendarDate } from "@/lib/utils/calendar-date"
 import { runSerializableTransaction } from "@/lib/serializable-transaction"
+import { lockGroupInvariants } from "@/lib/group-invariant-lock"
 import {
   assertNoInactiveMemberBalances,
   getOutstandingDebt,
 } from "@/services/balances.service"
 import type { CreateSettlementInput } from "@/lib/validations/settlement"
 import { recordSettlementHistory } from "@/services/statistics-history.service"
+import { decodeDateCursor, encodeDateCursor } from "@/lib/date-cursor"
+
+const SETTLEMENT_PAGE_SIZE = 50
 
 export async function createSettlement(
   userId: string,
@@ -26,6 +30,7 @@ export async function createSettlement(
   if (!memberIds.has(data.toUserId)) throw new Error("RECIPIENT_NOT_MEMBER")
 
   return runSerializableTransaction(async (tx) => {
+    await lockGroupInvariants(tx, data.groupId)
     const txGroup = await tx.group.findUnique({
       where: { id: data.groupId },
       include: { members: { where: { isActive: true }, select: { userId: true } } },
@@ -87,6 +92,7 @@ export async function resetSettlements(groupId: string, userId: string) {
   if (!member?.isActive || member.role !== "ADMIN") throw new Error("FORBIDDEN")
 
   return runSerializableTransaction(async (tx) => {
+    await lockGroupInvariants(tx, groupId)
     const txMember = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     })
@@ -113,18 +119,50 @@ export async function resetSettlements(groupId: string, userId: string) {
   })
 }
 
-export async function getGroupSettlements(groupId: string, userId: string) {
+export async function getGroupSettlements(
+  groupId: string,
+  userId: string,
+  cursor?: string | null,
+  pageSize = SETTLEMENT_PAGE_SIZE
+) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
   })
   if (!member?.isActive) throw new Error("FORBIDDEN")
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+    throw new Error("INVALID_PAGE_SIZE")
+  }
 
-  return prisma.settlement.findMany({
-    where: { groupId },
+  const decodedCursor = cursor == null ? null : decodeDateCursor(cursor)
+  const cursorFilter = decodedCursor
+    ? {
+        OR: [
+          { date: { lt: decodedCursor.date } },
+          { date: decodedCursor.date, createdAt: { lt: decodedCursor.createdAt } },
+          {
+            date: decodedCursor.date,
+            createdAt: decodedCursor.createdAt,
+            id: { lt: decodedCursor.id },
+          },
+        ],
+      }
+    : {}
+
+  const rows = await prisma.settlement.findMany({
+    where: { groupId, ...cursorFilter },
     include: {
       fromUser: { select: { id: true, name: true, avatarUrl: true } },
       toUser: { select: { id: true, name: true, avatarUrl: true } },
     },
-    orderBy: { date: "desc" },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    take: pageSize + 1,
   })
+  const settlements = rows.slice(0, pageSize)
+  const lastSettlement = settlements.at(-1)
+  return {
+    settlements,
+    nextCursor: rows.length > pageSize && lastSettlement
+      ? encodeDateCursor(lastSettlement)
+      : null,
+  }
 }

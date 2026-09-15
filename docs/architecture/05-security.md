@@ -109,17 +109,28 @@ Activity доступна только active members группы. Metadata м�
 
 ## Валидация и целостность
 
-Zod schemas защищают JSON command types, длины, money ranges, split totals, supported currencies и avatar scheme. Query/path values и Auth.js credentials имеют неполную ручную/framework validation: большинство IDs/tokens не проверяются по shape/length, search query не имеет max length. Services проверяют членство, роли, debt amount и бизнес-инварианты.
+Zod schemas защищают JSON command types, длины, money ranges, split totals,
+supported currencies и avatar scheme. Query/path values имеют неполную ручную
+validation: большинство IDs/tokens не проверяются по shape/length, а search
+query не имеет max length. Services проверяют членство, роли, debt amount и
+остальные application-инварианты.
 
-На уровне PostgreSQL отсутствуют CHECK constraints для:
+PostgreSQL дублирует критические финансовые гарантии через CHECK constraints и
+deferred invariant triggers:
 
-- положительности денежных сумм;
-- supported currency;
-- `fromUserId != toUserId`;
-- суммы exact/percentage splits;
-- согласованности `amountBase` и валюты группы.
+- суммы, base amounts и rates положительны, `fromUserId != toUserId`;
+- original/base split totals равны expense totals, percentage total равен 100%;
+- финансовые участники принадлежат группе, а новые операции используют только
+  active memberships;
+- manual settlement использует валюту группы, expense-linked cash settlement
+  соответствует payer и существующему split;
+- участник с ненулевой position не может стать inactive;
+- неизменяемые financial identity/monetary fields нельзя переписать через SQL.
 
-Поэтому целостность гарантирована только при записи через текущий application layer. Seed, ручной SQL или другой writer способны создать состояние, которое API не допустил бы.
+БД проверяет формат currency как три заглавные буквы, но конкретный список
+поддерживаемых валют, authorization, текстовые ограничения и FX policy остаются
+ответственностью application layer. Ручной SQL не может обойти основные ledger
+инварианты, но всё равно не является поддерживаемой границей записи.
 
 ## Обработка ошибок и утечка информации
 

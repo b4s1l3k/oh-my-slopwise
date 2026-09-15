@@ -101,7 +101,7 @@ export function ExpenseForm({ groupId, members, currency, expense, rateBook, rec
       if (!title.trim()) throw new Error("Укажите название")
       if (selectedIds.length === 0) throw new Error("Выберите хотя бы одного участника")
 
-      const splits = buildSplits(splitType, selectedIds, amount, exactAmounts, percentages)
+      const splits = buildSplits(splitType, selectedIds, exactAmounts, percentages)
 
       // Ручной курс учитываем только если валюта траты ≠ валюте расчёта.
       const parsedRate = parseFloat(rateStr.replace(",", "."))
@@ -410,7 +410,6 @@ function splitTypeLabel(t: SplitType) {
 function buildSplits(
   type: SplitType,
   ids: string[],
-  totalAmount: number,
   exact: Record<string, string>,
   pct: Record<string, string>
 ) {

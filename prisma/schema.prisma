@@ -9,7 +9,7 @@ generator client {
 
 model User {
   id           String  @id @default(cuid())
-  email        String  @unique
+  email        String  @unique @db.Citext
   name         String
   avatarUrl    String?
   passwordHash String
@@ -19,24 +19,27 @@ model User {
   bankName     String? // банк
   payeeAccount String? // номер карты / телефона
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
-  groupsCreated    Group[]        @relation("GroupCreator")
-  groupMemberships GroupMember[]
-  expensesPaid     Expense[]      @relation("ExpensePayer")
-  expensesCreated  Expense[]      @relation("ExpenseCreator")
-  expenseSplits    ExpenseSplit[]
-  settlementsFrom  Settlement[]   @relation("SettlementFrom")
-  settlementsTo    Settlement[]   @relation("SettlementTo")
-  activities       ActivityLog[]
-  friendsRequested Friendship[]   @relation("FriendRequester")
-  friendsReceived  Friendship[]   @relation("FriendAddressee")
-  invitesCreated   GroupInvite[]  @relation("InviteCreator")
-  feedbacks        Feedback[]
-  achievements     UserAchievement[]
-  statisticFacts   UserStatisticFact[]
+  groupsCreated       Group[]                 @relation("GroupCreator")
+  groupMemberships    GroupMember[]
+  expensesPaid        Expense[]               @relation("ExpensePayer")
+  expensesCreated     Expense[]               @relation("ExpenseCreator")
+  expenseSplits       ExpenseSplit[]
+  settlementsFrom     Settlement[]            @relation("SettlementFrom")
+  settlementsTo       Settlement[]            @relation("SettlementTo")
+  activities          ActivityLog[]
+  invitesCreated      GroupInvite[]           @relation("InviteCreator")
+  feedbacks           Feedback[]
+  achievements        UserAchievement[]
+  statisticFacts      UserStatisticFact[]
+  statisticMetrics    UserStatisticMetric[]
+  statisticCurrencies UserStatisticCurrency[]
+  statisticMoney      UserStatisticMoney[]
+  groupPositions      GroupMemberPosition[]
 
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_name_trgm_idx")
   @@map("users")
 }
 
@@ -46,16 +49,15 @@ model UserAchievement {
   id            String    @id @default(cuid())
   userId        String
   achievementId String
-  unlockedAt    DateTime  @default(now())
+  unlockedAt    DateTime  @default(now()) @db.Timestamptz(3)
   // Момент, когда пользователю показали всплывающее уведомление об ачивке.
   // null — ещё не показывали (нужно всплыть). Существующие записи при миграции
   // помечаются как уже показанные, чтобы не спамить прошлыми наградами.
-  notifiedAt    DateTime?
+  notifiedAt    DateTime? @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, achievementId])
-  @@index([achievementId])
   @@index([userId, notifiedAt])
   @@map("user_achievements")
 }
@@ -70,14 +72,50 @@ model UserStatisticFact {
   reference String
   value     Int      @default(1)
   currency  String?
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, kind, reference])
-  @@index([userId, kind])
-  @@index([userId, kind, currency])
+  @@index([reference, kind])
   @@map("user_statistic_facts")
+}
+
+// Compact, transactionally maintained read models. PostgreSQL triggers keep
+// them in sync with UserStatisticFact; facts remain the rebuildable history.
+model UserStatisticMetric {
+  userId    String
+  kind      String
+  factCount BigInt
+  maxValue  Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, kind])
+  @@map("user_statistic_metrics")
+}
+
+model UserStatisticCurrency {
+  userId    String
+  currency  String
+  factCount BigInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, currency])
+  @@map("user_statistic_currencies")
+}
+
+model UserStatisticMoney {
+  userId     String
+  kind       String
+  currency   String
+  totalValue BigInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, kind, currency])
+  @@map("user_statistic_money")
 }
 
 model Feedback {
@@ -85,29 +123,11 @@ model Feedback {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   message   String
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
-  @@index([createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("feedbacks")
-}
-
-model Friendship {
-  id          String           @id @default(cuid())
-  requesterId String
-  addresseeId String
-  status      FriendshipStatus @default(ACCEPTED)
-  createdAt   DateTime         @default(now())
-
-  requester User @relation("FriendRequester", fields: [requesterId], references: [id])
-  addressee User @relation("FriendAddressee", fields: [addresseeId], references: [id])
-
-  @@unique([requesterId, addresseeId])
-  @@map("friendships")
-}
-
-enum FriendshipStatus {
-  PENDING
-  ACCEPTED
 }
 
 model Group {
@@ -118,15 +138,16 @@ model Group {
   currency    String    @default("RUB")
   createdById String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
-  createdBy   User          @relation("GroupCreator", fields: [createdById], references: [id])
+  createdBy   User                  @relation("GroupCreator", fields: [createdById], references: [id])
   members     GroupMember[]
   expenses    Expense[]
   settlements Settlement[]
   activities  ActivityLog[]
   invites     GroupInvite[]
+  positions   GroupMemberPosition[]
 
   @@index([createdById])
   @@map("groups")
@@ -140,12 +161,13 @@ enum GroupType {
 }
 
 model GroupMember {
-  id       String          @id @default(cuid())
-  groupId  String
-  userId   String
-  role     GroupMemberRole @default(MEMBER)
-  joinedAt DateTime        @default(now())
-  isActive Boolean         @default(true)
+  id             String          @id @default(cuid())
+  groupId        String
+  userId         String
+  role           GroupMemberRole @default(MEMBER)
+  joinedAt       DateTime        @default(now()) @db.Timestamptz(3)
+  isActive       Boolean         @default(true)
+  groupUpdatedAt DateTime        @default(now()) @db.Timestamptz(3)
 
   // Переопределение реквизитов для этой поездки (если null — берутся из профиля)
   payeeName    String?
@@ -156,7 +178,7 @@ model GroupMember {
   user  User  @relation(fields: [userId], references: [id])
 
   @@unique([groupId, userId])
-  @@index([userId, isActive])
+  @@index([userId, isActive, groupUpdatedAt(sort: Desc), groupId(sort: Desc)])
   @@map("group_members")
 }
 
@@ -173,24 +195,24 @@ model Expense {
   title       String
   amount      Int
   currency    String    @default("RUB")
-  amountBase  Int? // сумма в валюте расчёта группы (по курсу на дату операции)
-  customRate  Float? // ручной курс «валюта траты → валюта расчёта»; null = курс ЦБ
+  amountBase  Int // сумма в валюте расчёта группы (по курсу на дату операции)
+  customRate  Decimal?  @db.Decimal(20, 10) // ручной курс «валюта траты → валюта расчёта»; null = курс ЦБ
   category    String?
   splitType   SplitType @default(EQUAL)
-  date        DateTime
+  date        DateTime  @db.Date
   notes       String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
-  group     Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  paidBy    User           @relation("ExpensePayer", fields: [paidById], references: [id])
-  createdBy User           @relation("ExpenseCreator", fields: [createdById], references: [id])
-  splits    ExpenseSplit[]
+  group       Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  paidBy      User           @relation("ExpensePayer", fields: [paidById], references: [id])
+  createdBy   User           @relation("ExpenseCreator", fields: [createdById], references: [id])
+  splits      ExpenseSplit[]
   // Расчёты наличными, сделанные в момент этой траты
   settlements Settlement[]
 
-  @@index([groupId, date(sort: Desc)])
+  @@index([groupId, date(sort: Desc), createdAt(sort: Desc), id(sort: Desc)])
   @@index([paidById])
   @@index([createdById])
   @@map("expenses")
@@ -207,8 +229,7 @@ model ExpenseSplit {
   expenseId  String
   userId     String
   amount     Int
-  amountBase Int? // доля в рублях по курсу ЦБ на дату операции
-  share      Int?
+  amountBase Int // доля в валюте расчёта группы
   percentage Int?
 
   expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
@@ -221,24 +242,24 @@ model ExpenseSplit {
 
 model Settlement {
   id         String   @id @default(cuid())
-  groupId    String?
+  groupId    String
   expenseId  String? // если расчёт сделан наличными в момент конкретной траты
   fromUserId String
   toUserId   String
   amount     Int
   currency   String   @default("RUB")
-  amountBase Int? // сумма в рублях по курсу ЦБ на дату операции
-  date       DateTime
+  amountBase Int // сумма в валюте расчёта группы
+  date       DateTime @db.Date
   notes      String?
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
-  group    Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   expense  Expense? @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   fromUser User     @relation("SettlementFrom", fields: [fromUserId], references: [id])
   toUser   User     @relation("SettlementTo", fields: [toUserId], references: [id])
 
-  @@index([groupId, date(sort: Desc)])
+  @@index([groupId, date(sort: Desc), createdAt(sort: Desc), id(sort: Desc)])
   @@index([expenseId])
   @@index([fromUserId, toUserId])
   @@index([toUserId])
@@ -247,19 +268,20 @@ model Settlement {
 
 model ActivityLog {
   id         String       @id @default(cuid())
-  groupId    String?
+  groupId    String
   actorId    String
   type       ActivityType
   entityType String
   entityId   String
   metadata   Json
 
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
-  group Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  actor User   @relation(fields: [actorId], references: [id])
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  actor User  @relation(fields: [actorId], references: [id])
 
-  @@index([groupId, createdAt(sort: Desc)])
+  @@index([groupId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([actorId])
   @@map("activity_log")
 }
 
@@ -281,7 +303,7 @@ model GroupInvite {
   groupId     String
   createdById String
   revoked     Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
   group     Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   createdBy User  @relation("InviteCreator", fields: [createdById], references: [id])
@@ -296,10 +318,26 @@ model ExchangeRate {
   id        String   @id @default(cuid())
   date      DateTime @db.Date
   currency  String
-  rate      Float
-  createdAt DateTime @default(now())
+  rate      Decimal  @db.Decimal(20, 10)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@unique([date, currency])
   @@index([currency, date(sort: Desc)])
   @@map("exchange_rates")
+}
+
+// Current net position in the group's settlement currency. Database triggers
+// maintain it from expenses, splits and settlements in the same transaction.
+model GroupMemberPosition {
+  groupId   String
+  userId    String
+  balance   BigInt   @default(0)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@id([groupId, userId])
+  @@index([userId, groupId])
+  @@map("group_member_positions")
 }

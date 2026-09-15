@@ -1,0 +1,93 @@
+{
+  "$schema": "../schema/golden-suite.schema.json",
+  "schemaVersion": 1,
+  "suite": "activity-pagination",
+  "description": "Language-neutral account activity visibility, stable keyset ordering and opaque cursor contract.",
+  "cases": [
+    {
+      "id": "activity.first-page-active-memberships-only",
+      "description": "The first page excludes inactive and outsider groups and orders timestamp ties by descending id.",
+      "operation": "activity.page",
+      "input": {
+        "userId": "viewer",
+        "pageSize": 2,
+        "cursor": null,
+        "memberships": [
+          { "userId": "viewer", "groupId": "active", "isActive": true },
+          { "userId": "viewer", "groupId": "inactive", "isActive": false },
+          { "userId": "other", "groupId": "outsider", "isActive": true }
+        ],
+        "activities": [
+          { "id": "activity-inactive", "groupId": "inactive", "actorId": "alice", "type": "GROUP_UPDATED", "entityType": "group", "entityId": "inactive", "metadata": { "name": "Hidden", "private": true }, "createdAt": "2026-09-15T12:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "inactive", "name": "Inactive" } },
+          { "id": "activity-outsider", "groupId": "outsider", "actorId": "alice", "type": "GROUP_UPDATED", "entityType": "group", "entityId": "outsider", "metadata": { "name": "Hidden" }, "createdAt": "2026-09-15T12:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "outsider", "name": "Outsider" } },
+          { "id": "activity-newest", "groupId": "active", "actorId": "alice", "type": "GROUP_UPDATED", "entityType": "group", "entityId": "active", "metadata": { "name": "Trip", "private": true }, "createdAt": "2026-09-15T12:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "active", "name": "Trip" } },
+          { "id": "activity-z", "groupId": "active", "actorId": "alice", "type": "EXPENSE_UPDATED", "entityType": "expense", "entityId": "expense-z", "metadata": { "title": "Dinner", "amount": 1200, "currency": "RUB", "changes": ["amount", 42, "title"], "private": true }, "createdAt": "2026-09-15T11:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "active", "name": "Trip" } },
+          { "id": "activity-a", "groupId": "active", "actorId": "alice", "type": "MEMBER_ADDED", "entityType": "member", "entityId": "bob", "metadata": { "memberName": "Bob", "viaInvite": false, "private": true }, "createdAt": "2026-09-15T11:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "active", "name": "Trip" } }
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "activities": [
+            { "id": "activity-newest", "groupId": "active", "actorId": "alice", "type": "GROUP_UPDATED", "entityType": "group", "entityId": "active", "metadata": { "name": "Trip" }, "createdAt": "2026-09-15T12:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "active", "name": "Trip" } },
+            { "id": "activity-z", "groupId": "active", "actorId": "alice", "type": "EXPENSE_UPDATED", "entityType": "expense", "entityId": "expense-z", "metadata": { "title": "Dinner", "amount": 1200, "currency": "RUB", "changes": ["amount", "title"] }, "createdAt": "2026-09-15T11:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "active", "name": "Trip" } }
+          ],
+          "nextCursor": "WyIyMDI2LTA5LTE1VDExOjAwOjAwLjAwMFoiLCJhY3Rpdml0eS16Il0"
+        }
+      }
+    },
+    {
+      "id": "activity.second-page-cursor-continuity",
+      "description": "The next page continues after both cursor keys without a duplicate.",
+      "operation": "activity.page",
+      "input": {
+        "userId": "viewer",
+        "pageSize": 2,
+        "cursor": "WyIyMDI2LTA5LTE1VDExOjAwOjAwLjAwMFoiLCJhY3Rpdml0eS16Il0",
+        "memberships": [{ "userId": "viewer", "groupId": "active", "isActive": true }],
+        "activities": [
+          { "id": "activity-newest", "groupId": "active", "actorId": "alice", "type": "GROUP_UPDATED", "entityType": "group", "entityId": "active", "metadata": { "name": "Trip" }, "createdAt": "2026-09-15T12:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "active", "name": "Trip" } },
+          { "id": "activity-z", "groupId": "active", "actorId": "alice", "type": "GROUP_UPDATED", "entityType": "group", "entityId": "active", "metadata": { "name": "Trip" }, "createdAt": "2026-09-15T11:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "active", "name": "Trip" } },
+          { "id": "activity-a", "groupId": "active", "actorId": "alice", "type": "MEMBER_ADDED", "entityType": "member", "entityId": "bob", "metadata": { "memberName": "Bob", "viaInvite": false }, "createdAt": "2026-09-15T11:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "active", "name": "Trip" } }
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "activities": [
+            { "id": "activity-a", "groupId": "active", "actorId": "alice", "type": "MEMBER_ADDED", "entityType": "member", "entityId": "bob", "metadata": { "memberName": "Bob", "viaInvite": false }, "createdAt": "2026-09-15T11:00:00.000Z", "actor": { "id": "alice", "name": "Alice" }, "group": { "id": "active", "name": "Trip" } }
+          ],
+          "nextCursor": null
+        }
+      }
+    },
+    {
+      "id": "activity.maximum-page-size",
+      "description": "The documented maximum page size is accepted.",
+      "operation": "activity.page",
+      "input": { "userId": "viewer", "pageSize": 50, "cursor": null, "memberships": [], "activities": [] },
+      "expected": { "ok": true, "value": { "activities": [], "nextCursor": null } }
+    },
+    {
+      "id": "activity.invalid-cursor",
+      "description": "Malformed opaque cursors have one stable error code.",
+      "operation": "activity.page",
+      "input": { "userId": "viewer", "pageSize": 1, "cursor": "not-a-cursor", "memberships": [], "activities": [] },
+      "expected": { "ok": false, "error": { "code": "INVALID_CURSOR" } }
+    },
+    {
+      "id": "activity.zero-page-size",
+      "description": "Zero is rejected before querying activity.",
+      "operation": "activity.page",
+      "input": { "userId": "viewer", "pageSize": 0, "cursor": null, "memberships": [], "activities": [] },
+      "expected": { "ok": false, "error": { "code": "INVALID_PAGE_SIZE" } }
+    },
+    {
+      "id": "activity.excessive-page-size",
+      "description": "A page larger than fifty is rejected.",
+      "operation": "activity.page",
+      "input": { "userId": "viewer", "pageSize": 51, "cursor": null, "memberships": [], "activities": [] },
+      "expected": { "ok": false, "error": { "code": "INVALID_PAGE_SIZE" } }
+    }
+  ]
+}

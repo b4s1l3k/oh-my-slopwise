@@ -38,7 +38,10 @@ describe("group response mapper boundaries", () => {
   })
 
   it("preserves an explicit zero expense count", () => {
-    expect(toGroupListResponse([groupSource(0)]).groups[0]._count).toEqual({ expenses: 0 })
+    const result = toGroupListResponse({ groups: [groupSource(0)], nextCursor: "next" })
+
+    expect(result.groups[0]._count).toEqual({ expenses: 0 })
+    expect(result.nextCursor).toBe("next")
   })
 
   it("keeps omitted user requisites omitted even in an authorized detail response", () => {

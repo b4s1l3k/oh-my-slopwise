@@ -1,0 +1,3 @@
+export const MAX_GROUP_MEMBERS = 100
+export const MAX_EXPENSE_PARTICIPANTS = 100
+export const MAX_EXPENSE_CASH_PAYMENTS = 100

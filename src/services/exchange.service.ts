@@ -56,12 +56,12 @@ async function getNearestCachedRate(currency: string, day: Date) {
     }),
   ])
 
-  if (!before) return after?.rate ?? null
-  if (!after) return before.rate
+  if (!before) return after ? Number(after.rate) : null
+  if (!after) return Number(before.rate)
 
   const beforeDistance = day.getTime() - before.date.getTime()
   const afterDistance = after.date.getTime() - day.getTime()
-  return beforeDistance <= afterDistance ? before.rate : after.rate
+  return Number(beforeDistance <= afterDistance ? before.rate : after.rate)
 }
 
 /**
@@ -78,7 +78,7 @@ export async function getRateToRub(currency: string, date: Date): Promise<number
   const cached = await prisma.exchangeRate.findUnique({
     where: { date_currency: { date: day, currency } },
   })
-  if (cached) return cached.rate
+  if (cached) return Number(cached.rate)
 
   try {
     const rates = await fetchCbrRates(day)
@@ -94,29 +94,4 @@ export async function getRateToRub(currency: string, date: Date): Promise<number
     if (nearest != null) return nearest
     throw new Error("RATE_UNAVAILABLE")
   }
-}
-
-// Пересчёт суммы (в копейках исходной валюты) в рубли (копейки)
-export async function convertToRub(
-  amount: number,
-  currency: string,
-  date: Date
-): Promise<number> {
-  const rate = await getRateToRub(currency, date)
-  return Math.round(amount * rate)
-}
-
-// Пересчёт между любыми валютами через рубль (кросс-курс ЦБ на дату)
-export async function convertBetween(
-  amount: number,
-  from: string,
-  to: string,
-  date: Date
-): Promise<number> {
-  if (from === to) return amount
-  const [rateFrom, rateTo] = await Promise.all([
-    getRateToRub(from, date),
-    getRateToRub(to, date),
-  ])
-  return Math.round((amount * rateFrom) / rateTo)
 }

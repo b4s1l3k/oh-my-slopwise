@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List activity from the current user's active groups
+         * @description Returns a keyset-paginated account feed ordered by createdAt DESC, id DESC. Activity from groups where the current membership is inactive is excluded.
+         */
+        get: operations["listAccountActivityV1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/credentials": {
         parameters: {
             query?: never;
@@ -106,7 +126,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List active groups of the current user */
+        /** List one cursor page of active groups of the current user */
         get: operations["listGroupsV1"];
         put?: never;
         /** Create a group and memberships */
@@ -188,7 +208,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List one page of group expenses */
+        /** List one cursor page of group expenses */
         get: operations["listGroupExpensesV1"];
         put?: never;
         /** Create an expense and optional linked cash settlements */
@@ -267,7 +287,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List group settlements newest business date first */
+        /** List one cursor page of group settlements newest business date first */
         get: operations["listGroupSettlementsV1"];
         put?: never;
         post?: never;
@@ -562,8 +582,7 @@ export interface components {
             expenseId: components["schemas"]["OpaqueId"];
             userId: components["schemas"]["OpaqueId"];
             amount: components["schemas"]["MoneyInteger"];
-            amountBase: components["schemas"]["MoneyInteger"] | null;
-            share: number | null;
+            amountBase: components["schemas"]["MoneyInteger"];
             percentage: number | null;
             user: components["schemas"]["UserSummary"];
         };
@@ -571,7 +590,7 @@ export interface components {
             id: components["schemas"]["OpaqueId"];
             amount: components["schemas"]["MoneyInteger"];
             currency: string;
-            amountBase: components["schemas"]["MoneyInteger"] | null;
+            amountBase: components["schemas"]["MoneyInteger"];
             fromUser: components["schemas"]["UserName"];
         };
         Expense: {
@@ -582,7 +601,7 @@ export interface components {
             title: string;
             amount: components["schemas"]["MoneyInteger"];
             currency: string;
-            amountBase: components["schemas"]["MoneyInteger"] | null;
+            amountBase: components["schemas"]["MoneyInteger"];
             customRate: number | null;
             category: string | null;
             /** @enum {string} */
@@ -598,13 +617,13 @@ export interface components {
         };
         Settlement: {
             id: components["schemas"]["OpaqueId"];
-            groupId: string | null;
+            groupId: components["schemas"]["OpaqueId"];
             expenseId: string | null;
             fromUserId: components["schemas"]["OpaqueId"];
             toUserId: components["schemas"]["OpaqueId"];
             amount: components["schemas"]["MoneyInteger"];
             currency: string;
-            amountBase: components["schemas"]["MoneyInteger"] | null;
+            amountBase: components["schemas"]["MoneyInteger"];
             date: components["schemas"]["Timestamp"];
             notes: string | null;
             createdAt: components["schemas"]["Timestamp"];
@@ -613,7 +632,7 @@ export interface components {
         };
         Activity: {
             id: components["schemas"]["OpaqueId"];
-            groupId: string | null;
+            groupId: components["schemas"]["OpaqueId"];
             actorId: components["schemas"]["OpaqueId"];
             /** @enum {string} */
             type: "EXPENSE_CREATED" | "EXPENSE_UPDATED" | "EXPENSE_DELETED" | "SETTLEMENT_CREATED" | "SETTLEMENTS_RESET" | "MEMBER_ADDED" | "MEMBER_REMOVED" | "GROUP_UPDATED";
@@ -737,6 +756,7 @@ export interface components {
         };
         GroupListResponse: {
             groups: components["schemas"]["Group"][];
+            nextCursor: string | null;
         };
         GroupResponse: {
             group: components["schemas"]["Group"];
@@ -749,8 +769,7 @@ export interface components {
         };
         ExpensePageResponse: {
             expenses: components["schemas"]["Expense"][];
-            total: number;
-            hasNext: boolean;
+            nextCursor: string | null;
         };
         UserBalance: {
             userId: components["schemas"]["OpaqueId"];
@@ -793,6 +812,7 @@ export interface components {
         };
         SettlementListResponse: {
             settlements: components["schemas"]["Settlement"][];
+            nextCursor: string | null;
         };
         ResetSettlementsResponse: {
             removed: number;
@@ -820,6 +840,29 @@ export interface components {
         };
         ActivityListResponse: {
             activities: components["schemas"]["Activity"][];
+        };
+        ActivityGroupSummary: {
+            id: components["schemas"]["OpaqueId"];
+            name: string;
+        };
+        AccountActivity: {
+            id: components["schemas"]["OpaqueId"];
+            groupId: components["schemas"]["OpaqueId"];
+            actorId: components["schemas"]["OpaqueId"];
+            /** @enum {string} */
+            type: "EXPENSE_CREATED" | "EXPENSE_UPDATED" | "EXPENSE_DELETED" | "SETTLEMENT_CREATED" | "SETTLEMENTS_RESET" | "MEMBER_ADDED" | "MEMBER_REMOVED" | "GROUP_UPDATED";
+            entityType: string;
+            entityId: string;
+            metadata: {
+                [key: string]: unknown;
+            };
+            createdAt: components["schemas"]["Timestamp"];
+            actor: components["schemas"]["UserName"];
+            group: components["schemas"]["ActivityGroupSummary"];
+        };
+        AccountActivityPageResponse: {
+            activities: components["schemas"]["AccountActivity"][];
+            nextCursor: string | null;
         };
         FeedbackResponse: {
             feedback: components["schemas"]["Feedback"];
@@ -926,13 +969,13 @@ export interface components {
                 "application/json": components["schemas"]["EmptyObject"];
             };
         };
-        /** @description Malformed query according to route-specific checks */
+        /** @description Malformed query or opaque cursor */
         BadRequest: {
             headers: {
                 [name: string]: unknown;
             };
             content: {
-                "application/json": components["schemas"]["StringErrorEnvelope"];
+                "application/json": components["schemas"]["LegacyErrorEnvelope"];
             };
         };
         /** @description Missing authenticated Auth.js user */
@@ -1009,6 +1052,34 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAccountActivityV1: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor returned by the previous page. */
+                cursor?: string;
+                /** @description Page size. Defaults to 50 and cannot exceed 50. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account activity page ordered newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountActivityPageResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
     authenticateCredentialsV1: {
         parameters: {
             query?: never;
@@ -1184,14 +1255,17 @@ export interface operations {
     };
     listGroupsV1: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Opaque cursor returned by the previous page. The server uses a fixed page size of 30. */
+                cursor?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Groups ordered by descending updatedAt */
+            /** @description Group page ordered by descending updatedAt and id */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1200,7 +1274,9 @@ export interface operations {
                     "application/json": components["schemas"]["GroupListResponse"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     createGroupV1: {
@@ -1355,8 +1431,8 @@ export interface operations {
     listGroupExpensesV1: {
         parameters: {
             query?: {
-                /** @description One-based page number. The server uses a fixed page size of 30. */
-                page?: number;
+                /** @description Opaque cursor returned by the previous page. The server uses a fixed page size of 30. */
+                cursor?: string;
             };
             header?: never;
             path: {
@@ -1541,7 +1617,10 @@ export interface operations {
     };
     listGroupSettlementsV1: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Opaque cursor returned by the previous page. The server uses a fixed page size of 50. */
+                cursor?: string;
+            };
             header?: never;
             path: {
                 id: components["parameters"]["IdPath"];
@@ -1559,6 +1638,7 @@ export interface operations {
                     "application/json": components["schemas"]["SettlementListResponse"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalServerError"];

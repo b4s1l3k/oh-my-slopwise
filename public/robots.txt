@@ -4,5 +4,3 @@ Disallow: /admin/
 Disallow: /profile
 Disallow: /groups/
 Disallow: /q/86f2a1
-
-Sitemap: https://splitwise.ruyek01.direct.kexogg.ru/sitemap.xml

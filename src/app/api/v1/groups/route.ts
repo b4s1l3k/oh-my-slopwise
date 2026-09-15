@@ -8,12 +8,17 @@ import {
   toGroupResponse,
 } from "@/lib/api/v1/response-mappers"
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const groups = await groupsService.getUserGroups(session.user.id)
-  return NextResponse.json(toGroupListResponse(groups))
+  const cursor = new URL(req.url).searchParams.get("cursor")
+  try {
+    const result = await groupsService.getUserGroups(session.user.id, cursor)
+    return NextResponse.json(toGroupListResponse(result))
+  } catch (e) {
+    return handleServiceError(e)
+  }
 }
 
 export async function POST(req: Request) {

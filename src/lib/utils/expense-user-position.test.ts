@@ -80,18 +80,6 @@ describe("getExpenseUserPosition", () => {
     ).toBeNull()
   })
 
-  it("CASH_PAID: cash settlement exists but no matching split (legacy/edge data)", () => {
-    expect(
-      getExpenseUserPosition({
-        currentUserId: "bob",
-        paidById: "alice",
-        expenseAmount: 240000,
-        shareAmount: undefined,
-        cashPaid: 50000,
-      })
-    ).toEqual({ kind: "CASH_PAID", cashPaid: 50000 })
-  })
-
   it("SETTLED when cash covers or exceeds the share (remaining clamped at 0)", () => {
     expect(
       getExpenseUserPosition({

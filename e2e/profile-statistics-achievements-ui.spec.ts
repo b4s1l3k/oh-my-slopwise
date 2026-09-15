@@ -89,7 +89,13 @@ test.describe("profile statistics and achievements UI", () => {
     await expect(page.getByText("По процентам", { exact: true })).toBeVisible()
     await expect(page.getByText("Создано приглашений", { exact: true })).toBeVisible()
     await expect(page.getByText("3 из 3", { exact: true })).toBeVisible()
+    await expect(page.getByText("Максимум участников оплаченной и добавленной вами траты", { exact: true })).toBeVisible()
     await expect(page.getByText("Дней с регистрации", { exact: true })).toBeVisible()
+    const money = page.getByRole("region", { name: "Деньги за всё время" })
+    await expect(money.getByText("Оплачено вами", { exact: true })).toBeVisible()
+    await expect(money.getByText("Получено по расчётам", { exact: true })).toBeVisible()
+    await expect(money.getByText(/12.*345.*₽/)).toBeVisible()
+    await expect(money.getByText(/99,99.*\$/)).toBeVisible()
   })
 
   test("orders achievements and expands and collapses the full collection", async ({ page }) => {

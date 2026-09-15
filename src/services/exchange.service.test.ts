@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest"
 import { prisma } from "@/lib/db"
 import { BASE_CURRENCY } from "@/lib/currencies"
-import { convertBetween, convertToRub, getRateToRub } from "@/services/exchange.service"
+import { getRateToRub } from "@/services/exchange.service"
 
 // Behavioral SPEC for a future rewrite: assert the ACTUAL behavior of
 // exchange.service against the cached `exchange_rates` table ONLY.
@@ -26,8 +26,7 @@ const describeDatabase = runDatabaseTests ? describe : describe.skip
 // with anything seeded by the real application. Each row we insert is removed
 // in afterAll by these exact dates.
 const DAY_USD = new Date(Date.UTC(2099, 0, 10)) // 2099-01-10
-const DAY_CROSS = new Date(Date.UTC(2099, 0, 11)) // 2099-01-11
-const SEEDED_DATES = [DAY_USD, DAY_CROSS]
+const SEEDED_DATES = [DAY_USD]
 
 describeDatabase("exchange.service cached-rate behavior", () => {
   afterAll(async () => {
@@ -59,28 +58,6 @@ describeDatabase("exchange.service cached-rate behavior", () => {
     expect(await getRateToRub("USD", sameDayWithTime)).toBe(90)
   })
 
-  it("convertToRub multiplies by the cached rate and rounds", async () => {
-    // 10000 cents of USD at rate 90 => round(10000 * 90) = 900000
-    expect(await convertToRub(10_000, "USD", DAY_USD)).toBe(900_000)
-  })
-
-  it("convertBetween returns the amount unchanged when from === to", async () => {
-    // No rate lookup happens on the identity path.
-    expect(await convertBetween(12_345, "USD", "USD", DAY_USD)).toBe(12_345)
-  })
-
-  it("convertBetween computes the cross-rate through RUB and rounds", async () => {
-    await prisma.exchangeRate.createMany({
-      data: [
-        { date: DAY_CROSS, currency: "USD", rate: 90 },
-        { date: DAY_CROSS, currency: "EUR", rate: 100 },
-      ],
-      skipDuplicates: true,
-    })
-
-    // round(10000 * rateFrom(USD=90) / rateTo(EUR=100)) = round(9000) = 9000
-    expect(await convertBetween(10_000, "USD", "EUR", DAY_CROSS)).toBe(9_000)
-  })
 })
 
 // Покрываем сетевой путь getRateToRub детерминированно, ПОДМЕНЯЯ global.fetch
@@ -130,7 +107,7 @@ describeDatabase("exchange.service network path (mocked fetch)", () => {
     const cached = await prisma.exchangeRate.findUnique({
       where: { date_currency: { date: FETCH_DAY, currency: "USD" } },
     })
-    expect(cached?.rate).toBe(90.5)
+    expect(Number(cached?.rate)).toBe(90.5)
   })
 
   it("делит value на nominal (например, за 10 единиц)", async () => {

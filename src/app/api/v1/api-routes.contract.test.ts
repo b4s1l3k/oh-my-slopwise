@@ -32,6 +32,9 @@ const mocks = vi.hoisted(() => ({
     getGroupBalances: vi.fn(),
     getOverviewBalances: vi.fn(),
   },
+  activity: {
+    getAccountActivity: vi.fn(),
+  },
   settlements: {
     createSettlement: vi.fn(),
     getGroupSettlements: vi.fn(),
@@ -52,8 +55,7 @@ const mocks = vi.hoisted(() => ({
     collectUnseenAchievementUnlocks: vi.fn(),
   },
   statistics: {
-    getHistoricalUserStatistics: vi.fn(),
-    getHistoricalUserMoneyStatistics: vi.fn(),
+    getHistoricalUserStatisticsSnapshot: vi.fn(),
   },
   prisma: {
     user: {
@@ -80,6 +82,11 @@ vi.mock("@/services/authentication.service", () => mocks.authentication)
 vi.mock("@/services/groups.service", () => mocks.groups)
 vi.mock("@/services/expenses.service", () => mocks.expenses)
 vi.mock("@/services/balances.service", () => mocks.balances)
+vi.mock("@/services/activity.service", () => ({
+  DEFAULT_ACTIVITY_PAGE_SIZE: 50,
+  MAX_ACTIVITY_PAGE_SIZE: 50,
+  ...mocks.activity,
+}))
 vi.mock("@/services/settlements.service", () => mocks.settlements)
 vi.mock("@/services/invites.service", () => mocks.invites)
 vi.mock("@/services/feedback.service", () => mocks.feedback)
@@ -87,6 +94,7 @@ vi.mock("@/services/achievements.service", () => mocks.achievements)
 vi.mock("@/services/statistics.service", () => mocks.statistics)
 
 import * as adminFeedbackRoute from "@/app/api/v1/admin/feedback/route"
+import * as accountActivityRoute from "@/app/api/v1/activity/route"
 import * as credentialsRoute from "@/app/api/v1/auth/credentials/route"
 import * as balanceOverviewRoute from "@/app/api/v1/balances/overview/route"
 import * as expenseRoute from "@/app/api/v1/expenses/[id]/route"
@@ -171,7 +179,6 @@ const expenseDto = {
       userId: "user-1",
       amount: 10_000,
       amountBase: 10_000,
-      share: null,
       percentage: null,
       user: userSummary,
     },
@@ -255,6 +262,7 @@ beforeEach(() => {
 
 describe("/api/v1 authentication contract", () => {
   const protectedOperations: Array<[string, string, () => Promise<Response>]> = [
+    ["GET /activity", "listAccountActivityV1", () => accountActivityRoute.GET(request("/api/v1/activity"))],
     ["GET /admin/feedback", "listAdminFeedbackV1", () => adminFeedbackRoute.GET()],
     ["GET /balances/overview", "getBalanceOverviewV1", () => balanceOverviewRoute.GET()],
     ["GET /expenses/:id", "getExpenseV1", () => expenseRoute.GET(request("/api/v1/expenses/expense-1"), expenseContext)],
@@ -275,7 +283,7 @@ describe("/api/v1 authentication contract", () => {
     ["DELETE /groups/:id", "deleteGroupV1", () => groupRoute.DELETE(request("/api/v1/groups/group-1", "DELETE"), groupContext)],
     ["GET /groups/:id/settlements", "listGroupSettlementsV1", () => groupSettlementsRoute.GET(request("/api/v1/groups/group-1/settlements"), groupContext)],
     ["DELETE /groups/:id/settlements", "resetGroupSettlementsV1", () => groupSettlementsRoute.DELETE(request("/api/v1/groups/group-1/settlements", "DELETE"), groupContext)],
-    ["GET /groups", "listGroupsV1", () => groupsRoute.GET()],
+    ["GET /groups", "listGroupsV1", () => groupsRoute.GET(request("/api/v1/groups"))],
     ["POST /groups", "createGroupV1", () => groupsRoute.POST(request("/api/v1/groups", "POST", groupCommand))],
     ["POST /invites/:token/accept", "acceptInviteV1", () => inviteAcceptRoute.POST(request("/api/v1/invites/invite-token/accept", "POST"), inviteContext)],
     ["GET /invites/:token", "getInviteV1", () => inviteRoute.GET(request("/api/v1/invites/invite-token"), inviteContext)],
@@ -398,7 +406,10 @@ describe("/api/v1 route handler success contracts", () => {
       payeeAccount: null,
     }
     const redactedGroup = { ...groupDto, members: [redactedMember] }
-    mocks.groups.getUserGroups.mockResolvedValue([{ ...sensitiveGroup, persistenceOnly: true }])
+    mocks.groups.getUserGroups.mockResolvedValue({
+      groups: [{ ...sensitiveGroup, persistenceOnly: true }],
+      nextCursor: "cursor-2",
+    })
     mocks.groups.createGroup.mockResolvedValue(sensitiveGroup)
     mocks.groups.getGroup.mockResolvedValue(groupDto)
     mocks.groups.updateGroup.mockResolvedValue({ ...sensitiveGroup, name: "New" })
@@ -406,7 +417,12 @@ describe("/api/v1 route handler success contracts", () => {
     mocks.groups.addMember.mockResolvedValue(sensitiveMember)
     mocks.groups.removeMember.mockResolvedValue(member)
 
-    await expectJson(await groupsRoute.GET(), 200, { groups: [redactedGroup] }, "listGroupsV1")
+    await expectJson(
+      await groupsRoute.GET(request("/api/v1/groups?cursor=cursor-1")),
+      200,
+      { groups: [redactedGroup], nextCursor: "cursor-2" },
+      "listGroupsV1"
+    )
     await expectJson(
       await groupsRoute.POST(request("/api/v1/groups", "POST", groupCommand)),
       201,
@@ -454,13 +470,14 @@ describe("/api/v1 route handler success contracts", () => {
     )
 
     expect(mocks.groups.createGroup).toHaveBeenCalledWith("user-1", groupCommand)
+    expect(mocks.groups.getUserGroups).toHaveBeenCalledWith("user-1", "cursor-1")
     expect(mocks.groups.addMember).toHaveBeenCalledWith("group-1", "user-1", "user-2")
     expect(mocks.groups.removeMember).toHaveBeenCalledWith("group-1", "user-1", "user-2")
   })
 
   it("covers expense collection and resource operations", async () => {
-    const page = { expenses: [{ ...expenseDto, persistenceOnly: true }], total: 1, hasNext: false }
-    const expectedPage = { expenses: [expenseDto], total: 1, hasNext: false }
+    const page = { expenses: [{ ...expenseDto, persistenceOnly: true }], nextCursor: "opaque" }
+    const expectedPage = { expenses: [expenseDto], nextCursor: "opaque" }
     mocks.expenses.getGroupExpenses.mockResolvedValue(page)
     mocks.expenses.createExpense.mockResolvedValue(expenseDto)
     mocks.expenses.getExpense.mockResolvedValue(expenseDto)
@@ -469,7 +486,7 @@ describe("/api/v1 route handler success contracts", () => {
 
     await expectJson(
       await groupExpensesRoute.GET(
-        request("/api/v1/groups/group-1/expenses?page=2"),
+        request("/api/v1/groups/group-1/expenses?cursor=cursor-2"),
         groupContext
       ),
       200,
@@ -510,7 +527,11 @@ describe("/api/v1 route handler success contracts", () => {
       "deleteExpenseV1"
     )
 
-    expect(mocks.expenses.getGroupExpenses).toHaveBeenCalledWith("group-1", "user-1", 2)
+    expect(mocks.expenses.getGroupExpenses).toHaveBeenCalledWith(
+      "group-1",
+      "user-1",
+      "cursor-2"
+    )
     expect(mocks.expenses.createExpense).toHaveBeenCalledWith(
       "group-1",
       "user-1",
@@ -524,7 +545,10 @@ describe("/api/v1 route handler success contracts", () => {
     mocks.balances.getGroupBalances.mockResolvedValue(balances)
     mocks.balances.getOverviewBalances.mockResolvedValue(overview)
     mocks.settlements.createSettlement.mockResolvedValue(settlementDto)
-    mocks.settlements.getGroupSettlements.mockResolvedValue([settlementDto])
+    mocks.settlements.getGroupSettlements.mockResolvedValue({
+      settlements: [settlementDto],
+      nextCursor: null,
+    })
     mocks.settlements.resetSettlements.mockResolvedValue({ removed: 1 })
 
     await expectJson(
@@ -548,8 +572,13 @@ describe("/api/v1 route handler success contracts", () => {
         groupContext
       ),
       200,
-      { settlements: [settlementDto] },
+      { settlements: [settlementDto], nextCursor: null },
       "listGroupSettlementsV1"
+    )
+    expect(mocks.settlements.getGroupSettlements).toHaveBeenCalledWith(
+      "group-1",
+      "user-1",
+      null
     )
     await expectJson(
       await groupSettlementsRoute.DELETE(
@@ -642,6 +671,14 @@ describe("/api/v1 route handler success contracts", () => {
     mocks.prisma.activityLog.findMany.mockResolvedValue([
       { ...activity, metadata: { ...activity.metadata, persistenceOnly: true } },
     ])
+    mocks.activity.getAccountActivity.mockResolvedValue({
+      activities: [{
+        ...activity,
+        metadata: { ...activity.metadata, persistenceOnly: true },
+        group: { id: "group-1", name: "Trip" },
+      }],
+      nextCursor: "activity-cursor-2",
+    })
 
     await expectJson(await currentUserRoute.GET(), 200, { user }, "getCurrentUserV1")
     await expectJson(
@@ -666,6 +703,25 @@ describe("/api/v1 route handler success contracts", () => {
       200,
       { activities: [activity] },
       "listGroupActivityV1"
+    )
+    await expectJson(
+      await accountActivityRoute.GET(
+        request("/api/v1/activity?cursor=activity-cursor-1&limit=25")
+      ),
+      200,
+      {
+        activities: [{
+          ...activity,
+          group: { id: "group-1", name: "Trip" },
+        }],
+        nextCursor: "activity-cursor-2",
+      },
+      "listAccountActivityV1"
+    )
+    expect(mocks.activity.getAccountActivity).toHaveBeenCalledWith(
+      "user-1",
+      "activity-cursor-1",
+      25
     )
     await expectJson(
       await groupRequisitesRoute.PATCH(
@@ -736,8 +792,10 @@ describe("/api/v1 route handler success contracts", () => {
       }],
     }
     const unlocked = [{ id: "first-group", title: "Group", description: "", icon: "users" }]
-    mocks.statistics.getHistoricalUserStatistics.mockResolvedValue(lifetime)
-    mocks.statistics.getHistoricalUserMoneyStatistics.mockResolvedValue(money)
+    mocks.statistics.getHistoricalUserStatisticsSnapshot.mockResolvedValue({
+      metrics: lifetime,
+      money,
+    })
     mocks.buildProfileStatistics.mockReturnValue(statistics)
     mocks.achievements.getUserAchievements.mockResolvedValue(achievements)
     mocks.achievements.collectUnseenAchievementUnlocks.mockResolvedValue(unlocked)
@@ -825,16 +883,41 @@ describe("/api/v1 route handler success contracts", () => {
 })
 
 describe("/api/v1 route handler error contracts", () => {
-  it("returns exact query errors before calling services", async () => {
+  it.each(["0", "51", "1.5", "-1", "", " 1", "01", "Infinity"])(
+    "rejects account activity limit %j before querying",
+    async (limit) => {
+      await expectJson(
+        await accountActivityRoute.GET(request(`/api/v1/activity?limit=${encodeURIComponent(limit)}`)),
+        400,
+        {
+          error: {
+            code: "INVALID_PAGE_SIZE",
+            message: "Некорректный размер страницы",
+          },
+        },
+        "listAccountActivityV1"
+      )
+      expect(mocks.activity.getAccountActivity).not.toHaveBeenCalled()
+    }
+  )
+
+  it("maps an invalid account activity cursor to the stable error envelope", async () => {
+    mocks.activity.getAccountActivity.mockRejectedValue(new Error("INVALID_CURSOR"))
+
     await expectJson(
-      await groupExpensesRoute.GET(
-        request("/api/v1/groups/group-1/expenses?page=0"),
-        groupContext
-      ),
+      await accountActivityRoute.GET(request("/api/v1/activity?cursor=invalid&limit=1")),
       400,
-      { error: "Invalid page" },
-      "listGroupExpensesV1"
+      {
+        error: {
+          code: "INVALID_CURSOR",
+          message: "Некорректный курсор пагинации",
+        },
+      },
+      "listAccountActivityV1"
     )
+  })
+
+  it("returns exact query errors before calling services", async () => {
     await expectJson(
       await groupMembersRoute.DELETE(
         request("/api/v1/groups/group-1/members", "DELETE"),
@@ -844,7 +927,6 @@ describe("/api/v1 route handler error contracts", () => {
       { error: "userId required" },
       "removeGroupMemberV1"
     )
-    expect(mocks.expenses.getGroupExpenses).not.toHaveBeenCalled()
     expect(mocks.groups.removeMember).not.toHaveBeenCalled()
   })
 
@@ -889,6 +971,35 @@ describe("/api/v1 route handler error contracts", () => {
   })
 
   it("maps domain errors to their stable status, code and message", async () => {
+    mocks.groups.getUserGroups.mockRejectedValue(new Error("INVALID_CURSOR"))
+    await expectJson(
+      await groupsRoute.GET(request("/api/v1/groups?cursor=invalid")),
+      400,
+      {
+        error: {
+          code: "INVALID_CURSOR",
+          message: "Некорректный курсор пагинации",
+        },
+      },
+      "listGroupsV1"
+    )
+
+    mocks.expenses.getGroupExpenses.mockRejectedValue(new Error("INVALID_CURSOR"))
+    await expectJson(
+      await groupExpensesRoute.GET(
+        request("/api/v1/groups/group-1/expenses?cursor=invalid"),
+        groupContext
+      ),
+      400,
+      {
+        error: {
+          code: "INVALID_CURSOR",
+          message: "Некорректный курсор пагинации",
+        },
+      },
+      "listGroupExpensesV1"
+    )
+
     mocks.expenses.updateExpense.mockRejectedValue(new Error("PAYER_NOT_MEMBER"))
     await expectJson(
       await expenseRoute.PATCH(

@@ -174,6 +174,17 @@ describe("createGroupSchema", () => {
     it("rejects a non-array memberIds", () => {
       expect(createGroupSchema.safeParse({ name: "X", memberIds: "a" }).success).toBe(false)
     })
+
+    it("limits the number of initial members", () => {
+      expect(createGroupSchema.safeParse({
+        name: "X",
+        memberIds: Array.from({ length: 100 }, (_, index) => `user-${index}`),
+      }).success).toBe(true)
+      expect(createGroupSchema.safeParse({
+        name: "X",
+        memberIds: Array.from({ length: 101 }, (_, index) => `user-${index}`),
+      }).success).toBe(false)
+    })
   })
 })
 

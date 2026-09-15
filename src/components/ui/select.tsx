@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils"
 import type React from "react"
 
 export const Select = SelectPrimitive.Root
-export const SelectGroup = SelectPrimitive.Group
 export const SelectValue = SelectPrimitive.Value
 
 export function SelectTrigger({
@@ -29,7 +28,7 @@ export function SelectTrigger({
   )
 }
 
-export function SelectScrollUpButton({
+function SelectScrollUpButton({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollUpButton>) {
@@ -43,7 +42,7 @@ export function SelectScrollUpButton({
   )
 }
 
-export function SelectScrollDownButton({
+function SelectScrollDownButton({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollDownButton>) {
@@ -91,18 +90,6 @@ export function SelectContent({
   )
 }
 
-export function SelectLabel({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>) {
-  return (
-    <SelectPrimitive.Label
-      className={cn("py-1.5 pl-8 pr-2 text-sm font-semibold", className)}
-      {...props}
-    />
-  )
-}
-
 export function SelectItem({
   className,
   children,
@@ -123,17 +110,5 @@ export function SelectItem({
       </span>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
     </SelectPrimitive.Item>
-  )
-}
-
-export function SelectSeparator({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>) {
-  return (
-    <SelectPrimitive.Separator
-      className={cn("-mx-1 my-1 h-px bg-muted", className)}
-      {...props}
-    />
   )
 }

@@ -3,11 +3,9 @@
 import {
   infiniteQueryOptions,
   mutationOptions,
-  queryOptions,
   type QueryClient,
   useInfiniteQuery,
   useMutation,
-  useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
 import {
@@ -25,26 +23,15 @@ import {
 export type CreateExpenseCommand = Parameters<typeof expensesApi.createExpense>[1]
 export type UpdateExpenseCommand = Parameters<typeof expensesApi.updateExpense>[1]
 
-export function expenseQueryOptions(groupId: string, expenseId: string) {
-  return queryOptions({
-    queryKey: apiQueryKeys.expenses.detail(groupId, expenseId),
-    queryFn: async ({ signal }) => {
-      const response = await expensesApi.getExpense(expenseId, { signal })
-      return mapExpenseViewModel(response.expense)
-    },
-  })
-}
-
 export function groupExpensesInfiniteQueryOptions(groupId: string) {
   return infiniteQueryOptions({
     queryKey: apiQueryKeys.expenses.list(groupId),
-    initialPageParam: 1,
+    initialPageParam: null as string | null,
     queryFn: async ({ pageParam, signal }) => {
       const response = await expensesApi.getGroupExpenses(groupId, pageParam, { signal })
       return mapExpensePageViewModel(response)
     },
-    getNextPageParam: (lastPage, pages) =>
-      lastPage.hasNext ? pages.length + 1 : undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   })
 }
 
@@ -84,10 +71,6 @@ export function deleteExpenseMutationOptions(
     onSuccess: (_data, expenseId) =>
       invalidateDeletedExpense(queryClient, groupId, expenseId),
   })
-}
-
-export function useExpense(groupId: string, expenseId: string) {
-  return useQuery(expenseQueryOptions(groupId, expenseId))
 }
 
 export function useGroupExpenses(groupId: string) {

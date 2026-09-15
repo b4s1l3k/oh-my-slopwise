@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest"
-import type { ActivityDto } from "@contract/v1"
-import { mapActivityItemViewModel } from "./mappers"
+import type { AccountActivityDto, ActivityDto } from "@contract/v1"
+import {
+  mapAccountActivityItemViewModel,
+  mapActivityItemViewModel,
+} from "./mappers"
 
 const base: Omit<ActivityDto, "metadata"> = {
   id: "activity",
-  groupId: null,
+  groupId: "group",
   actorId: "alice",
   type: "SETTLEMENT_CREATED",
   entityType: "settlement",
@@ -98,5 +101,23 @@ describe("activity DTO to view-model metadata matrix", () => {
     expect(result.actor).not.toBe(dto.actor)
     expect(result.metadata).not.toBe(dto.metadata)
     expect(result.metadata.changes).not.toBe(dto.metadata.changes)
+  })
+})
+
+describe("account activity DTO mapping", () => {
+  it("copies the group boundary without sharing transport references", () => {
+    const dto: AccountActivityDto = {
+      ...base,
+      metadata: { name: "Trip" },
+      group: { id: "group", name: "Trip" },
+    }
+
+    const result = mapAccountActivityItemViewModel(dto)
+
+    expect(result).toEqual({
+      ...mapActivityItemViewModel(dto),
+      group: { id: "group", name: "Trip" },
+    })
+    expect(result.group).not.toBe(dto.group)
   })
 })

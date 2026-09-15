@@ -1,160 +1,32 @@
-import { isCoffeeExpense, type AchievementMetrics } from "@/lib/achievements"
+import type { Prisma } from "@prisma/client"
+import type { AchievementMetrics } from "@/lib/achievements"
 import { prisma } from "@/lib/db"
 import { STATISTIC_KIND } from "@/services/statistics-history.service"
 import type { UserMoneyStatistics } from "@/lib/statistics"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-function maxBy<T>(items: T[], getValue: (item: T) => number) {
-  let maximum = 0
-  for (const item of items) maximum = Math.max(maximum, getValue(item))
-  return maximum
-}
+type StatisticsReader = Pick<
+  Prisma.TransactionClient,
+  | "user"
+  | "userStatisticMetric"
+  | "userStatisticCurrency"
+  | "userStatisticMoney"
+>
 
-/**
- * Current user statistics derived from source-of-truth operations.
- * Keeping these values live avoids a denormalized counters table drifting from
- * expenses after edits, settlement resets, member removal, or group deletion.
- */
-export async function getCurrentUserStatistics(userId: string, now = new Date()): Promise<AchievementMetrics> {
-  const [
-    user,
-    memberships,
-    createdExpenses,
-    paidExpenses,
-    expensesParticipated,
-    settlementsSent,
-    settlementsReceived,
-    cashSettlements,
-    groupsCreated,
-    invitesCreated,
-    currencies,
-  ] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        createdAt: true,
-        payeeName: true,
-        bankName: true,
-        payeeAccount: true,
-      },
-    }),
-    prisma.groupMember.findMany({
-      where: { userId, isActive: true },
-      select: {
-        group: {
-          select: {
-            type: true,
-            members: {
-              where: { isActive: true },
-              select: { userId: true },
-            },
-            _count: {
-              select: {
-                members: { where: { isActive: true } },
-                expenses: true,
-              },
-            },
-          },
-        },
-      },
-    }),
-    prisma.expense.findMany({
-      where: { createdById: userId },
-      select: {
-        paidById: true,
-        splitType: true,
-        customRate: true,
-        splits: { select: { userId: true } },
-      },
-    }),
-    prisma.expense.findMany({
-      where: { paidById: userId },
-      select: { title: true, category: true },
-    }),
-    prisma.expenseSplit.count({ where: { userId } }),
-    prisma.settlement.count({ where: { fromUserId: userId } }),
-    prisma.settlement.count({ where: { toUserId: userId } }),
-    prisma.settlement.count({
-      where: { fromUserId: userId, expenseId: { not: null } },
-    }),
-    prisma.group.count({ where: { createdById: userId } }),
-    prisma.groupInvite.count({ where: { createdById: userId } }),
-    prisma.expense.findMany({
-      where: {
-        OR: [
-          { createdById: userId },
-          { paidById: userId },
-          { splits: { some: { userId } } },
-        ],
-      },
-      distinct: ["currency"],
-      select: { currency: true },
-    }),
-  ])
-
-  if (!user) throw new Error("User not found")
-
-  const coMembers = new Set<string>()
-  const groupTypes = new Set<string>()
-
-  for (const membership of memberships) {
-    groupTypes.add(membership.group.type)
-    for (const member of membership.group.members) {
-      if (member.userId !== userId) coMembers.add(member.userId)
-    }
-  }
-
-  const countSplitType = (type: "EQUAL" | "EXACT" | "PERCENTAGE") =>
-    createdExpenses.filter((expense) => expense.splitType === type).length
-
-  const equalSplits = countSplitType("EQUAL")
-  const exactSplits = countSplitType("EXACT")
-  const percentageSplits = countSplitType("PERCENTAGE")
-
-  return {
-    accountAgeDays: Math.max(0, Math.floor((now.getTime() - user.createdAt.getTime()) / DAY_MS)),
-    profileReady: Number(Boolean(user.payeeName && user.bankName && user.payeeAccount)),
-    activeGroups: memberships.length,
-    groupsCreated,
-    invitesCreated,
-    expensesCreated: createdExpenses.length,
-    expensesParticipated,
-    expensesPaid: paidExpenses.length,
-    coffeeExpensesPaid: paidExpenses.filter((expense) =>
-      isCoffeeExpense(expense.title, expense.category)
-    ).length,
-    createdForOthers: createdExpenses.filter((expense) => expense.paidById !== userId).length,
-    uniquePeople: coMembers.size,
-    maxExpenseParticipants: maxBy(createdExpenses, (expense) => expense.splits.length),
-    maxPaidParticipants: maxBy(
-      createdExpenses.filter((expense) => expense.paidById === userId),
-      (expense) => expense.splits.length
-    ),
-    settlementsSent,
-    settlementsReceived,
-    cashSettlements,
-    equalSplits,
-    exactSplits,
-    percentageSplits,
-    splitMethodsUsed: [equalSplits, exactSplits, percentageSplits].filter((count) => count > 0).length,
-    customRates: createdExpenses.filter((expense) => expense.customRate !== null).length,
-    currenciesUsed: currencies.length,
-    groupTypesUsed: groupTypes.size,
-    homeGroups: memberships.filter((membership) => membership.group.type === "HOME").length,
-    tripGroups: memberships.filter((membership) => membership.group.type === "TRIP").length,
-    coupleGroups: memberships.filter((membership) => membership.group.type === "COUPLE").length,
-    maxGroupMembers: maxBy(memberships, (membership) => membership.group._count.members),
-    maxGroupExpenses: maxBy(memberships, (membership) => membership.group._count.expenses),
-  }
+function toSafeStatisticNumber(value: bigint, field: string): number {
+  const number = Number(value)
+  if (!Number.isSafeInteger(number)) throw new Error(`${field}_OUT_OF_RANGE`)
+  return number
 }
 
 export async function getHistoricalUserStatistics(
   userId: string,
-  now = new Date()
+  now = new Date(),
+  db: StatisticsReader = prisma
 ): Promise<AchievementMetrics> {
-  const [user, groupedFacts] = await Promise.all([
-    prisma.user.findUnique({
+  const [user, metrics, currenciesUsed] = await Promise.all([
+    db.user.findUnique({
       where: { id: userId },
       select: {
         createdAt: true,
@@ -163,17 +35,19 @@ export async function getHistoricalUserStatistics(
         payeeAccount: true,
       },
     }),
-    prisma.userStatisticFact.groupBy({
-      by: ["kind"],
+    db.userStatisticMetric.findMany({
       where: { userId },
-      _count: { _all: true },
-      _max: { value: true },
+      select: { kind: true, factCount: true, maxValue: true },
     }),
+    db.userStatisticCurrency.count({ where: { userId } }),
   ])
   if (!user) throw new Error("User not found")
 
-  const counts = new Map(groupedFacts.map((fact) => [fact.kind, fact._count._all]))
-  const maxima = new Map(groupedFacts.map((fact) => [fact.kind, fact._max.value ?? 0]))
+  const counts = new Map(metrics.map((metric) => [
+    metric.kind,
+    toSafeStatisticNumber(metric.factCount, "STATISTIC_COUNT"),
+  ]))
+  const maxima = new Map(metrics.map((metric) => [metric.kind, metric.maxValue]))
   const count = (kind: string) => counts.get(kind) ?? 0
   const maximum = (kind: string) => maxima.get(kind) ?? 0
 
@@ -207,43 +81,35 @@ export async function getHistoricalUserStatistics(
     percentageSplits,
     splitMethodsUsed: [equalSplits, exactSplits, percentageSplits].filter((value) => value > 0).length,
     customRates: count(STATISTIC_KIND.customRate),
-    currenciesUsed: count(STATISTIC_KIND.currency),
+    currenciesUsed,
     groupTypesUsed: [homeGroups, tripGroups, coupleGroups, otherGroups].filter((value) => value > 0).length,
     homeGroups,
     tripGroups,
     coupleGroups,
+    otherGroups,
     maxGroupMembers: maximum(STATISTIC_KIND.groupMembersRecord),
     maxGroupExpenses: maximum(STATISTIC_KIND.groupExpensesRecord),
   }
 }
 
-export function mergeHistoricalAndCurrentStatistics(
-  historical: AchievementMetrics,
-  current: AchievementMetrics
-): AchievementMetrics {
-  const merged = { ...historical }
-  for (const key of Object.keys(merged) as Array<keyof AchievementMetrics>) {
-    merged[key] = Math.max(historical[key], current[key])
-  }
-  return merged
-}
-
 export async function getHistoricalUserMoneyStatistics(
-  userId: string
+  userId: string,
+  db: StatisticsReader = prisma
 ): Promise<UserMoneyStatistics> {
-  const groupedFacts = await prisma.userStatisticFact.groupBy({
-    by: ["kind", "currency"],
+  const totalsByCurrency = await db.userStatisticMoney.findMany({
     where: {
       userId,
       kind: { in: [STATISTIC_KIND.moneySpent, STATISTIC_KIND.moneyReturned] },
-      currency: { not: null },
     },
-    _sum: { value: true },
+    select: { kind: true, currency: true, totalValue: true },
   })
 
-  const totals = (kind: string) => groupedFacts
-    .filter((fact) => fact.kind === kind && fact.currency !== null)
-    .map((fact) => ({ currency: fact.currency!, amount: fact._sum.value ?? 0 }))
+  const totals = (kind: string) => totalsByCurrency
+    .filter((total) => total.kind === kind)
+    .map((total) => ({
+      currency: total.currency,
+      amount: toSafeStatisticNumber(total.totalValue, "STATISTIC_MONEY"),
+    }))
     .sort((left, right) => left.currency.localeCompare(right.currency))
 
   return {
@@ -252,5 +118,15 @@ export async function getHistoricalUserMoneyStatistics(
   }
 }
 
-// Kept as the current-data API for internal callers that explicitly need a live snapshot.
-export const getUserStatistics = getCurrentUserStatistics
+export async function getHistoricalUserStatisticsSnapshot(
+  userId: string,
+  now = new Date()
+): Promise<{ metrics: AchievementMetrics; money: UserMoneyStatistics }> {
+  return prisma.$transaction(async (tx) => {
+    const [metrics, money] = await Promise.all([
+      getHistoricalUserStatistics(userId, now, tx),
+      getHistoricalUserMoneyStatistics(userId, tx),
+    ])
+    return { metrics, money }
+  }, { isolationLevel: "RepeatableRead" })
+}

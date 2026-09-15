@@ -244,7 +244,7 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
       )
 
       // customRate 100 is used instead of the seeded CBR rate 90
-      expect(expense.customRate).toBe(100)
+      expect(Number(expense.customRate)).toBe(100)
       expect(expense.amountBase).toBe(1_000_000)
 
       const splits = await prisma.expenseSplit.findMany({ where: { expenseId: expense.id } })
@@ -841,12 +841,16 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
     })
 
     it("moves the EXPENSE_PAID fact to the new payer when the payer changes", async () => {
-      const [admin, member] = await Promise.all([makeUser("Pay Admin"), makeUser("Pay Member")])
+      const [admin, oldPayer, newPayer] = await Promise.all([
+        makeUser("Pay Admin"),
+        makeUser("Old Pay Member"),
+        makeUser("New Pay Member"),
+      ])
       const group = await createGroup(admin.id, {
         name: "Payer reconcile group",
         type: "OTHER",
         currency: "RUB",
-        memberIds: [member.id],
+        memberIds: [oldPayer.id, newPayer.id],
       })
 
       const expense = await createExpense(
@@ -854,9 +858,9 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
         admin.id,
         expenseInput({
           amount: 10_000,
-          paidById: admin.id,
+          paidById: oldPayer.id,
           splitType: "EQUAL",
-          splits: [{ userId: admin.id }, { userId: member.id }],
+          splits: [{ userId: admin.id }],
         })
       )
 
@@ -865,9 +869,9 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
         admin.id,
         expenseInput({
           amount: 10_000,
-          paidById: member.id,
+          paidById: newPayer.id,
           splitType: "EQUAL",
-          splits: [{ userId: admin.id }, { userId: member.id }],
+          splits: [{ userId: admin.id }],
         })
       )
 
@@ -875,7 +879,18 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
         where: { kind: "EXPENSE_PAID", reference: expense.id },
       })
       expect(paidFacts).toHaveLength(1)
-      expect(paidFacts[0].userId).toBe(member.id)
+      expect(paidFacts[0].userId).toBe(newPayer.id)
+
+      const currencyFacts = await prisma.userStatisticFact.findMany({
+        where: { kind: "CURRENCY", reference: expense.id },
+        select: { userId: true, currency: true },
+        orderBy: { userId: "asc" },
+      })
+      expect(currencyFacts).toEqual(
+        [admin.id, newPayer.id]
+          .sort()
+          .map((userId) => ({ userId, currency: "RUB" }))
+      )
     })
 
     it("leaves only the current currency fact when the expense currency changes", async () => {
@@ -917,7 +932,10 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
       })
       // The RUB currency fact from before the edit must be reconciled away.
       expect(currencyFacts).toHaveLength(1)
-      expect(currencyFacts[0].reference).toBe("USD")
+      expect(currencyFacts[0]).toMatchObject({
+        reference: expense.id,
+        currency: "USD",
+      })
     })
   })
 
@@ -1089,26 +1107,47 @@ describeDatabase("expenses.service (DB-backed behavioral spec)", () => {
         currency: "RUB",
         memberIds: [b.id],
       })
-      // две траты, чтобы проверить hasNext при perPage=1
+      // Две траты, чтобы проверить непрерывность cursor pagination при pageSize=1.
+      const originalExpenses = []
       for (const title of ["Первая", "Вторая"]) {
-        await createExpense(group.id, a.id, expenseInput({
+        originalExpenses.push(await createExpense(group.id, a.id, expenseInput({
           title,
           amount: 20_000,
           paidById: a.id,
           splits: [{ userId: a.id }, { userId: b.id }],
-        }))
+        })))
       }
+      await prisma.expense.updateMany({
+        where: { id: { in: originalExpenses.map((expense) => expense.id) } },
+        data: { createdAt: new Date("2020-01-01T00:00:00.000Z") },
+      })
 
       await expect(getGroupExpenses(group.id, outsider.id)).rejects.toThrow("FORBIDDEN")
 
-      const page1 = await getGroupExpenses(group.id, a.id, 1, 1)
-      expect(page1.total).toBe(2)
+      const page1 = await getGroupExpenses(group.id, a.id, null, 1)
       expect(page1.expenses).toHaveLength(1)
-      expect(page1.hasNext).toBe(true)
+      expect(page1.nextCursor).toEqual(expect.any(String))
 
-      const page2 = await getGroupExpenses(group.id, a.id, 2, 1)
+      const insertedAfterFirstPage = await createExpense(group.id, a.id, expenseInput({
+        title: "Добавлена между страницами",
+        amount: 20_000,
+        paidById: a.id,
+        splits: [{ userId: a.id }, { userId: b.id }],
+      }))
+      const page2 = await getGroupExpenses(group.id, a.id, page1.nextCursor, 1)
       expect(page2.expenses).toHaveLength(1)
-      expect(page2.hasNext).toBe(false)
+      expect(page2.nextCursor).toBeNull()
+      expect(page2.expenses[0].id).not.toBe(page1.expenses[0].id)
+      expect(new Set([page1.expenses[0].id, page2.expenses[0].id])).toEqual(
+        new Set(originalExpenses.map((expense) => expense.id))
+      )
+      expect((await getGroupExpenses(group.id, a.id, null, 1)).expenses[0].id)
+        .toBe(insertedAfterFirstPage.id)
+
+      await expect(getGroupExpenses(group.id, a.id, "not-a-cursor", 1))
+        .rejects.toThrow("INVALID_CURSOR")
+      await expect(getGroupExpenses(group.id, a.id, null, 101))
+        .rejects.toThrow("INVALID_PAGE_SIZE")
     })
   })
 

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryErrorState } from "@/components/ui/query-error-state"
-import { Plus, Users } from "lucide-react"
+import { Loader2, Plus, Users } from "lucide-react"
 import { useGroups } from "@/hooks/api/use-groups"
 
 const GROUP_TYPE_LABELS: Record<string, string> = {
@@ -17,7 +17,16 @@ const GROUP_TYPE_LABELS: Record<string, string> = {
 }
 
 export default function GroupsPage() {
-  const { data, isLoading, isError, refetch } = useGroups()
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useGroups()
 
   return (
     <div className="space-y-6">
@@ -35,7 +44,7 @@ export default function GroupsPage() {
         <div className="space-y-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
         </div>
-      ) : isError ? (
+      ) : isError && data == null ? (
         <QueryErrorState
           title="Не удалось загрузить группы"
           onRetry={() => void refetch()}
@@ -81,6 +90,24 @@ export default function GroupsPage() {
                 </Card>
               </Link>
             )
+          )}
+          {hasNextPage && (
+            <div className="flex flex-col items-center gap-2 pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isFetchingNextPage ? "Загружаем…" : "Показать ещё"}
+              </Button>
+              {isFetchNextPageError && (
+                <p className="text-xs text-destructive">
+                  Не удалось загрузить группы. Попробуйте ещё раз.
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}

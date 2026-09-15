@@ -1,94 +1,51 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# Repository guidance
 
 ## Commands
 
 ```bash
-npm run dev          # start local dev server
-npm run build        # production build
-npm run db:generate  # regenerate Prisma client after schema changes
-npm run db:migrate   # run migrations in dev (creates migration files)
-npm run db:seed      # seed demo data (Alice/Bob/Carol, shared apartment group)
-npm run db:studio    # open Prisma Studio GUI
-npm run db:reset     # drop and recreate DB, re-run all migrations + seed
-npm run setup        # full bootstrap: install + generate + migrate + seed
+npm run dev                 # Next.js development server
+npm run build               # production build
+npm run db:generate         # regenerate Prisma Client
+npm run db:migrate          # create a development migration
+npm run db:deploy           # apply existing migrations
+npm run db:reset            # reset a local/test database; no seed is run
+npm run db:studio           # Prisma Studio
+npm run setup               # npm ci, generate and deploy migrations
+npm run typecheck
+npm test
+npm run test:db
+npm run test:coverage
+npm run test:contract
+npm run test:golden
+npm run test:e2e:production
 ```
 
-Tests use Vitest:
+Local PostgreSQL runs on port 5433 through `docker compose up -d db`. Copy
+`.env.example` to `.env`; both Prisma CLI and Next.js read it.
+There is no demo seed. The single migration in `prisma/migrations` is a
+fresh-install baseline and creates no users or application data.
 
-```bash
-npm test            # pure unit tests (no DB); DB-backed service tests are skipped
-npm run test:db     # full suite incl. DB-backed service tests (needs docker Postgres)
-npm run test:coverage # full suite + v8 coverage report
-npm run test:watch
-```
-
-DB-backed service specs are gated behind `RUN_DB_INTEGRATION_TESTS=true` and MUST
-run with `--no-file-parallelism` (baked into `test:db`): the services use
-Serializable transactions, so parallel test files deadlock against each other.
-They always use `TEST_DATABASE_URL`; its database name must contain a standalone
-`test` marker and must differ from `DATABASE_URL`. The runner derives
-`<application_database>_test` by default, applies pending migrations, and accepts
-an explicit `TEST_DATABASE_URL` override.
-There is no lint script. TypeScript checking: `npx tsc --noEmit`.
-
-Local Postgres runs on port **5433** (not 5432) via `docker-compose up -d`.
-
-Required env vars in `.env.local`: `DATABASE_URL`, `NEXTAUTH_SECRET` / `AUTH_SECRET`, `NEXTAUTH_URL`, `AUTH_TRUST_HOST=true`.
+DB tests use only `TEST_DATABASE_URL`; its database name must contain a
+standalone `test` marker and must differ from `DATABASE_URL`. The test runner
+applies migrations and disables file parallelism for transaction-sensitive
+integration tests.
 
 ## Architecture
 
-Next.js 15 App Router monorepo. All backend logic lives in API routes under `/src/app/api/v1/`. No separate server process.
+The current system is a Next.js 15 application with PostgreSQL:
 
-**Request flow:**
-```
-Browser (React + TanStack Query)
-  → fetch /api/v1/…
-  → API route (Zod parse + auth() session guard)
-  → Service layer (/src/services/*.service.ts)  ← all business logic here
-  → Prisma client (/src/lib/db.ts)
-  → PostgreSQL
+```text
+browser -> TanStack Query hook -> typed API client -> /api/v1 route
+        -> application service -> Prisma -> PostgreSQL
 ```
 
-**Route groups:**
-- `(auth)/` — login/register pages, no sidebar
-- `(dashboard)/` — all authenticated pages, rendered inside sidebar + mobile nav layout
+Routes and components stay thin. Business rules belong in `src/services` or
+pure domain helpers. Transport DTOs are generated from OpenAPI and mapped to
+frontend view models. Monetary amounts use integer minor units; `amountBase` is
+expressed in the group settlement currency. Ledger facts remain authoritative,
+while balance and lifetime-statistics projections are transactionally
+maintained and rebuildable.
 
-**Services** are the authoritative business layer. API routes are thin: parse, auth-check, call service, return response. Never put business logic in API routes or components.
-
-**Error handling:** services throw `Error("DOMAIN_CODE")` strings (e.g. `"EXPENSE_NOT_FOUND"`, `"UNAUTHORIZED"`). `handleServiceError()` in `/src/lib/api-errors.ts` maps these to HTTP status codes and Russian user-facing messages.
-
-**Activity logging:** every mutating operation (expense create/update/delete, settlement, member add/remove, group rename) is logged via Prisma in the same transaction. Don't skip this when adding new mutations — look at any existing service for the pattern.
-
-## Key Domain Concepts
-
-**Money is stored as integers (kopecks/cents)** — no floating-point arithmetic anywhere in DB or business logic. `formatMoney()` in `/src/lib/utils/format.ts` handles display formatting.
-
-**Dual-currency storage:** every `Expense` stores both `amount`/`currency` (original) and `amountBase` (converted to group's settlement currency via CBR rate on expense date). The balance calculator always works in `amountBase`. When creating or updating expenses, you must compute and store `amountBase` via `exchange.service.ts`.
-
-**Exchange rates:** fetched from CBR XML feed on first use for a (date, currency) pair, cached in the `exchange_rates` table. `getRateToRub`, `convertToRub`, `convertBetween` in `exchange.service.ts`. `BASE_CURRENCY = "RUB"` — all conversions go through RUB.
-
-**Balance calculation** (`/src/lib/utils/balance-calculator.ts`): greedy O(n log n) debt simplification — builds net positions from all expenses and settlements, then greedily pairs largest creditors and debtors to minimize transfer count. This is pure computation with no DB access; it receives pre-fetched data.
-
-**Split modes:** EQUAL, EXACT, PERCENTAGE. All split math lives in `/src/lib/utils/split-calculator.ts`. Zod validation in `/src/lib/validations/expense.ts` enforces percentage sum = 100%, etc.
-
-**Cash-on-spot payments:** an expense can have inline cash payments (`cashPayments`) where the payer marks certain participants as already settled. These are stored as part of the expense split data.
-
-## Data Model Highlights
-
-- `GroupMember` has a `defaultRate` (exchange rate at time of member's first expense) and `paymentRequisites` (freeform text shown in settlement dialog).
-- `ExpenseSplit` stores `amount` (share in expense currency) and `amountBase` (in settlement currency) per participant.
-- `Settlement` records a debt payoff between two members, always in the group's settlement currency.
-- `GroupInvite` holds a UUID token for shareable invite links; admin can revoke.
-- `Friendship` is created implicitly when two users share a group.
-
-## Frontend Conventions
-
-**TanStack Query** is the client state layer. Query keys: `["group", id]`, `["expenses", id]`, `["balances", id]`, `["overview"]`. Mutations call `queryClient.invalidateQueries(...)` on success — always invalidate all affected keys.
-
-**Forms** use `react-hook-form` + Zod resolvers. The shared Zod schemas in `/src/lib/validations/` are used on both client and server side.
-
-**UI components** in `/src/components/ui/` follow the Shadcn/CVA pattern: `class-variance-authority` for variants, `cn()` from `/src/lib/utils.ts` for conditional class merging.
-
-**`@/*` path alias** maps to `./src/*`.
+The detailed current and target architecture is maintained in
+`docs/architecture`. OpenAPI, golden fixtures and E2E fixture adapters are the
+migration boundary for a future backend and must remain independent of Prisma.

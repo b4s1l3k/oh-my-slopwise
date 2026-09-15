@@ -2,9 +2,11 @@ import { prisma } from "@/lib/db"
 import { calculateSplits } from "@/lib/utils/split-calculator"
 import { parseCalendarDate } from "@/lib/utils/calendar-date"
 import { runSerializableTransaction } from "@/lib/serializable-transaction"
+import { lockGroupInvariants } from "@/lib/group-invariant-lock"
 import { getRateToRub } from "@/services/exchange.service"
 import { assertNoInactiveMemberBalances } from "@/services/balances.service"
 import type { CreateExpenseInput } from "@/lib/validations/expense"
+import { decodeDateCursor, encodeDateCursor } from "@/lib/date-cursor"
 import {
   recordExpenseHistory,
   recordSettlementHistory,
@@ -31,24 +33,56 @@ const expenseInclude = {
 }
 
 const MAX_DATABASE_INT = 2_147_483_647
+const EXPENSE_PAGE_SIZE = 30
 
-export async function getGroupExpenses(groupId: string, userId: string, page = 1, perPage = 30) {
+function decimalToNumber(value: { toNumber(): number } | number | null): number | null {
+  if (value === null || typeof value === "number") return value
+  return value.toNumber()
+}
+
+export async function getGroupExpenses(
+  groupId: string,
+  userId: string,
+  cursor?: string | null,
+  pageSize = EXPENSE_PAGE_SIZE
+) {
   const member = await prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
   })
   if (!member?.isActive) throw new Error("FORBIDDEN")
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+    throw new Error("INVALID_PAGE_SIZE")
+  }
 
-  const [expenses, total] = await Promise.all([
-    prisma.expense.findMany({
-      where: { groupId },
-      include: expenseInclude,
-      orderBy: [{ date: "desc" }, { createdAt: "desc" }, { id: "desc" }],
-      skip: (page - 1) * perPage,
-      take: perPage,
-    }),
-    prisma.expense.count({ where: { groupId } }),
-  ])
-  return { expenses, total, hasNext: total > page * perPage }
+  const decodedCursor = cursor == null ? null : decodeDateCursor(cursor)
+  const cursorFilter = decodedCursor
+    ? {
+        OR: [
+          { date: { lt: decodedCursor.date } },
+          { date: decodedCursor.date, createdAt: { lt: decodedCursor.createdAt } },
+          {
+            date: decodedCursor.date,
+            createdAt: decodedCursor.createdAt,
+            id: { lt: decodedCursor.id },
+          },
+        ],
+      }
+    : {}
+
+  const rows = await prisma.expense.findMany({
+    where: { groupId, ...cursorFilter },
+    include: expenseInclude,
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    take: pageSize + 1,
+  })
+  const expenses = rows.slice(0, pageSize)
+  const lastExpense = expenses.at(-1)
+  return {
+    expenses,
+    nextCursor: rows.length > pageSize && lastExpense
+      ? encodeDateCursor(lastExpense)
+      : null,
+  }
 }
 
 export async function getExpense(expenseId: string, userId: string) {
@@ -91,6 +125,9 @@ async function validateExpenseParticipants(
 // factor — множитель «валюта траты → валюта расчёта» (кросс-курс на дату)
 function buildExpenseAmounts(data: CreateExpenseInput, factor: number) {
   const splitResults = calculateSplits(data.amount, data.splitType, data.splits)
+  if (splitResults.some((split) => split.amount <= 0)) {
+    throw new Error("CONVERTED_AMOUNT_TOO_SMALL")
+  }
   assertCashPayments(data, splitResults)
   const amountBase = toPositiveDatabaseInt(data.amount * factor)
   const convertedSplits = splitResults.map((split, index) => {
@@ -199,6 +236,7 @@ export async function createExpense(
   const { amountBase, splitRows } = buildExpenseAmounts(data, factor)
 
   return runSerializableTransaction(async (tx) => {
+    await lockGroupInvariants(tx, groupId)
     // Re-validate membership inside the transaction (A4 race guard)
     const txGroup = await tx.group.findUnique({
       where: { id: groupId },
@@ -303,7 +341,7 @@ export async function createExpense(
       title: expense.title,
       category: expense.category,
       splitType: expense.splitType,
-      customRate: expense.customRate,
+      customRate: decimalToNumber(expense.customRate),
       participantIds: expense.splits.map((split) => split.userId),
     })
 
@@ -352,9 +390,10 @@ export async function updateExpense(
   if (existing.splitType !== data.splitType) changes.push("способ разбивки")
   if (existing.paidById !== data.paidById) changes.push("плательщик")
   if (existing.date.getTime() !== expenseDate.getTime()) changes.push("дата")
-  if ((existing.customRate ?? null) !== (customRate ?? null)) changes.push("курс")
+  if (decimalToNumber(existing.customRate) !== customRate) changes.push("курс")
 
   return runSerializableTransaction(async (tx) => {
+    await lockGroupInvariants(tx, existing.groupId)
     // Re-validate membership inside the transaction (A4 race guard)
     const txGroup = await tx.group.findUnique({
       where: { id: existing.groupId },
@@ -376,7 +415,6 @@ export async function updateExpense(
         settlements: {
           select: { id: true, fromUserId: true, amount: true, amountBase: true },
         },
-        splits: { select: { userId: true } },
       },
     })
     if (!txExisting || txExisting.groupId !== existing.groupId) throw new Error("NOT_FOUND")
@@ -470,11 +508,8 @@ export async function updateExpense(
       title: expense.title,
       category: expense.category,
       splitType: expense.splitType,
-      customRate: expense.customRate,
+      customRate: decimalToNumber(expense.customRate),
       participantIds: expense.splits.map((split) => split.userId),
-    }, {
-      paidById: txExisting.paidById,
-      participantIds: txExisting.splits.map((split) => split.userId),
     })
     await tx.group.update({ where: { id: existing.groupId }, data: { updatedAt: new Date() } })
     return expense
@@ -482,7 +517,14 @@ export async function updateExpense(
 }
 
 export async function deleteExpense(expenseId: string, userId: string) {
+  const existing = await prisma.expense.findUnique({
+    where: { id: expenseId },
+    select: { groupId: true },
+  })
+  if (!existing) throw new Error("NOT_FOUND")
+
   await runSerializableTransaction(async (tx) => {
+    await lockGroupInvariants(tx, existing.groupId)
     const expense = await tx.expense.findUnique({ where: { id: expenseId } })
     if (!expense) throw new Error("NOT_FOUND")
 

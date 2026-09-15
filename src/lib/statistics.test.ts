@@ -29,6 +29,7 @@ const metrics: AchievementMetrics = {
   homeGroups: 2,
   tripGroups: 2,
   coupleGroups: 1,
+  otherGroups: 2,
   maxGroupMembers: 10,
   maxGroupExpenses: 80,
 }
@@ -64,17 +65,16 @@ describe("buildProfileStatistics", () => {
     })
   })
 
-  it("groups.other зажимается в 0, если типизированных групп больше, чем активных", () => {
-    // home+trip+couple (2+2+2=6) больше activeGroups (3) — разница отрицательна,
-    // но other не может быть меньше нуля.
+  it("maps lifetime OTHER groups independently from the active-group record", () => {
     const stats = buildProfileStatistics({
       ...metrics,
-      activeGroups: 3,
-      homeGroups: 2,
-      tripGroups: 2,
-      coupleGroups: 2,
+      activeGroups: 1,
+      homeGroups: 3,
+      tripGroups: 4,
+      coupleGroups: 5,
+      otherGroups: 6,
     })
-    expect(stats.groups.other).toBe(0)
+    expect(stats.groups.other).toBe(6)
   })
 
   it("includes monetary totals without combining currencies", () => {

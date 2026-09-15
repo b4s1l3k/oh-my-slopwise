@@ -13,6 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryErrorState } from "@/components/ui/query-error-state"
 import { useStatisticsQuery } from "@/hooks/api/use-achievements"
+import { formatMoney } from "@/lib/utils/format"
+import type { MoneyTotalViewModel } from "@/lib/api/view-models/models"
 
 const numberFormatter = new Intl.NumberFormat("ru-RU")
 
@@ -59,6 +61,25 @@ function DetailRow({ label, value }: { label: string; value: number | string }) 
     <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
       <span className="text-muted-foreground">{label}</span>
       <span className="font-medium tabular-nums">{value}</span>
+    </div>
+  )
+}
+
+function MoneyTotals({ label, totals }: { label: string; totals: MoneyTotalViewModel[] }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
+      {totals.length > 0 ? (
+        totals.map((total) => (
+          <DetailRow
+            key={total.currency}
+            label={total.currency}
+            value={formatMoney(total.amount, total.currency)}
+          />
+        ))
+      ) : (
+        <p className="py-1.5 text-sm text-muted-foreground">Нет данных</p>
+      )}
     </div>
   )
 }
@@ -135,6 +156,20 @@ export function StatisticsSection() {
           />
         </div>
 
+        <section className="border-t pt-5" aria-labelledby="statistics-money">
+          <h3 id="statistics-money" className="mb-1 flex items-center gap-2 text-sm font-semibold">
+            <Wallet className="h-4 w-4 text-primary" aria-hidden="true" />
+            Деньги за всё время
+          </h3>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Полные суммы оплаченных трат и полученных расчётов по исходным валютам
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <MoneyTotals label="Оплачено вами" totals={statistics.money.spent} />
+            <MoneyTotals label="Получено по расчётам" totals={statistics.money.returned} />
+          </div>
+        </section>
+
         <div className="grid gap-6 sm:grid-cols-2">
           <section className="space-y-3" aria-labelledby="statistics-splits">
             <div>
@@ -182,6 +217,7 @@ export function StatisticsSection() {
             <DetailRow label="Способов деления" value={`${statistics.mastery.splitMethodsUsed} из 3`} />
             <DetailRow label="Своих курсов указано" value={formatNumber(statistics.mastery.customRates)} />
             <DetailRow label="Максимум участников траты" value={formatNumber(statistics.records.maxExpenseParticipants)} />
+            <DetailRow label="Максимум участников оплаченной и добавленной вами траты" value={formatNumber(statistics.records.maxPaidParticipants)} />
             <DetailRow label="Самая большая группа" value={formatNumber(statistics.records.maxGroupMembers)} />
             <DetailRow label="Трат в самой активной группе" value={formatNumber(statistics.records.maxGroupExpenses)} />
             <DetailRow label="Дней с регистрации" value={formatNumber(statistics.records.accountAgeDays)} />

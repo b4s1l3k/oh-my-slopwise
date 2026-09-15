@@ -21,7 +21,16 @@ import { useActivity } from "@/hooks/api/use-activity"
 import type { ActivityItemViewModel } from "@/lib/api/view-models/models"
 export default function ActivityPage() {
   const [selected, setSelected] = useState<string>("all")
-  const { data: groups = [], isLoading, isError, refetch } = useActivity()
+  const {
+    data: groups = [],
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useActivity()
 
   const visible = selected === "all" ? groups : groups.filter((g) => g.id === selected)
 
@@ -38,7 +47,7 @@ export default function ActivityPage() {
             <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
-      ) : isError ? (
+      ) : isError && groups.length === 0 ? (
         <QueryErrorState
           title="Не удалось загрузить активность"
           onRetry={() => void refetch()}
@@ -108,6 +117,23 @@ export default function ActivityPage() {
               </Card>
             </section>
           ))}
+          {hasNextPage && (
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                className="rounded-md border px-4 py-2 text-sm hover:bg-accent disabled:opacity-50"
+                disabled={isFetchingNextPage}
+                onClick={() => void fetchNextPage()}
+              >
+                {isFetchingNextPage ? "Загрузка…" : "Показать ещё"}
+              </button>
+              {isFetchNextPageError && (
+                <p className="text-xs text-destructive">
+                  Не удалось загрузить активность. Попробуйте ещё раз.
+                </p>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

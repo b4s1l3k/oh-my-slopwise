@@ -1,4 +1,6 @@
 import type {
+  AccountActivityDto,
+  AccountActivityPageResponseDto,
   AchievementCollectionResponseDto,
   AchievementDto,
   AchievementUnlockDto,
@@ -12,6 +14,7 @@ import type {
   FriendBalanceDto,
   GroupBalancesDto,
   GroupDto,
+  GroupListResponseDto,
   GroupMemberDto,
   GroupMemberUserDto,
   InviteInfoDto,
@@ -26,6 +29,8 @@ import type {
   UserSummaryDto,
 } from "@contract/v1"
 import type {
+  AccountActivityItemViewModel,
+  AccountActivityPageViewModel,
   AchievementCollectionViewModel,
   AchievementUnlockViewModel,
   AchievementViewModel,
@@ -41,6 +46,7 @@ import type {
   GroupBalancesViewModel,
   GroupMemberUserViewModel,
   GroupMemberViewModel,
+  GroupPageViewModel,
   GroupViewModel,
   InviteViewModel,
   ProfileStatisticsViewModel,
@@ -118,6 +124,13 @@ export function mapGroupViewModel(dto: GroupDto): GroupViewModel {
   }
 }
 
+export function mapGroupPageViewModel(dto: GroupListResponseDto): GroupPageViewModel {
+  return {
+    groups: dto.groups.map(mapGroupViewModel),
+    nextCursor: dto.nextCursor,
+  }
+}
+
 function mapExpenseSplitViewModel(dto: ExpenseSplitDto): ExpenseSplitViewModel {
   return {
     id: dto.id,
@@ -125,7 +138,6 @@ function mapExpenseSplitViewModel(dto: ExpenseSplitDto): ExpenseSplitViewModel {
     userId: dto.userId,
     amount: dto.amount,
     amountBase: dto.amountBase,
-    share: dto.share,
     percentage: dto.percentage,
     user: mapUserSummaryViewModel(dto.user),
   }
@@ -170,8 +182,7 @@ export function mapExpenseViewModel(dto: ExpenseDto): ExpenseViewModel {
 export function mapExpensePageViewModel(dto: ExpensePageResponseDto): ExpensePageViewModel {
   return {
     expenses: dto.expenses.map(mapExpenseViewModel),
-    total: dto.total,
-    hasNext: dto.hasNext,
+    nextCursor: dto.nextCursor,
   }
 }
 
@@ -298,6 +309,27 @@ export function mapActivityItemViewModel(dto: ActivityDto): ActivityItemViewMode
         : undefined,
       removed: typeof metadata.removed === "number" ? metadata.removed : undefined,
     },
+  }
+}
+
+export function mapAccountActivityItemViewModel(
+  dto: AccountActivityDto
+): AccountActivityItemViewModel {
+  return {
+    ...mapActivityItemViewModel(dto),
+    group: {
+      id: dto.group.id,
+      name: dto.group.name,
+    },
+  }
+}
+
+export function mapAccountActivityPageViewModel(
+  dto: AccountActivityPageResponseDto
+): AccountActivityPageViewModel {
+  return {
+    activities: dto.activities.map(mapAccountActivityItemViewModel),
+    nextCursor: dto.nextCursor,
   }
 }
 

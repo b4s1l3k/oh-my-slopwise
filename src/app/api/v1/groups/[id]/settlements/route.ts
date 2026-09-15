@@ -9,14 +9,15 @@ import {
 
 type Params = { params: Promise<{ id: string }> }
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id: groupId } = await params
+  const cursor = new URL(req.url).searchParams.get("cursor")
   try {
-    const settlements = await settlementsService.getGroupSettlements(groupId, session.user.id)
-    return NextResponse.json(toSettlementListResponse(settlements))
+    const result = await settlementsService.getGroupSettlements(groupId, session.user.id, cursor)
+    return NextResponse.json(toSettlementListResponse(result))
   } catch (e) {
     return handleServiceError(e)
   }

@@ -1,43 +1,53 @@
 "use client"
 
-import { queryOptions, useQuery } from "@tanstack/react-query"
-import { groupsApi } from "@/lib/api/client/groups-api"
+import { infiniteQueryOptions, useInfiniteQuery } from "@tanstack/react-query"
 import { apiQueryKeys } from "@/hooks/api/query-keys"
-import { mapActivityItemViewModel } from "@/lib/api/view-models/mappers"
-import type { GroupActivityViewModel } from "@/lib/api/view-models/models"
+import { activityApi } from "@/lib/api/client/activity-api"
+import { mapAccountActivityPageViewModel } from "@/lib/api/view-models/mappers"
+import type {
+  AccountActivityItemViewModel,
+  GroupActivityViewModel,
+} from "@/lib/api/view-models/models"
 
-export function activityQueryOptions() {
-  return queryOptions({
+export function accountActivityInfiniteQueryOptions() {
+  return infiniteQueryOptions({
     queryKey: apiQueryKeys.groups.activity,
-    queryFn: async ({ signal }): Promise<GroupActivityViewModel[]> => {
-      const { groups } = await groupsApi.getGroups({ signal })
-      const groupsWithActivity = await Promise.all(
-        groups.map(async (group) => {
-          try {
-            const { activities } = await groupsApi.getActivity(group.id, { signal })
-            return {
-              id: group.id,
-              name: group.name,
-              activities: activities.map(mapActivityItemViewModel),
-            }
-          } catch (error) {
-            if (signal.aborted) throw error
-            return { id: group.id, name: group.name, activities: [] }
-          }
-        })
-      )
-
-      return groupsWithActivity
-        .filter((group) => group.activities.length > 0)
-        .sort(
-          (left, right) =>
-            new Date(right.activities[0].createdAt).getTime() -
-            new Date(left.activities[0].createdAt).getTime()
-        )
-    },
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam, signal }) =>
+      mapAccountActivityPageViewModel(
+        await activityApi.getActivity(pageParam, undefined, { signal })
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   })
 }
 
+export function groupAccountActivity(
+  activities: AccountActivityItemViewModel[]
+): GroupActivityViewModel[] {
+  const groups = new Map<string, GroupActivityViewModel>()
+
+  for (const activity of activities) {
+    const group = groups.get(activity.group.id)
+    if (group) {
+      group.activities.push(activity)
+    } else {
+      groups.set(activity.group.id, {
+        id: activity.group.id,
+        name: activity.group.name,
+        activities: [activity],
+      })
+    }
+  }
+
+  return [...groups.values()]
+}
+
 export function useActivity() {
-  return useQuery(activityQueryOptions())
+  const query = useInfiniteQuery(accountActivityInfiniteQueryOptions())
+  const activities = query.data?.pages.flatMap((page) => page.activities) ?? []
+
+  return {
+    ...query,
+    data: groupAccountActivity(activities),
+  }
 }

@@ -1,6 +1,10 @@
 # Архитектура SLOPwise Personal
 
-Документы `01`–`08` описывают фактическую архитектуру приложения по состоянию на 13 сентября 2026 года и построены по исходному коду, Prisma-схеме, миграциям, конфигурации и тестам. Документ `09` — отдельное предложение по целевой архитектуре, а `10` фиксирует уже реализованную migration boundary. Планы из соседних файлов `docs/*-plan.md` также не считаются реализованной архитектурой, если соответствующего кода ещё нет.
+Документы `01`–`08` описывают фактическую архитектуру приложения и построены по
+исходному коду, Prisma-схеме, миграциям, конфигурации и тестам. Документ `09` —
+отдельное предложение по целевой архитектуре, а `10` фиксирует уже реализованную
+migration boundary. Планы из соседних файлов `docs/*-plan.md` не считаются
+реализованной архитектурой, пока соответствующего кода нет.
 
 ## Навигация
 
@@ -25,7 +29,7 @@ SLOPwise Personal — single-module full-stack приложение для уч�
 
 Основной стек:
 
-- Node.js 22 в production image;
+- Node.js 22 Alpine в production image;
 - Next.js 15 App Router и React 19;
 - TypeScript в strict mode;
 - Auth.js/NextAuth с Credentials provider и JWT-сессиями;
@@ -51,7 +55,10 @@ React page/component
   -> PostgreSQL
 ```
 
-Для profile, registration, user search, activity и group requisites route handler обращается к Prisma напрямую, минуя service layer. Query/path параметры валидируются вручную лишь частично; единой проверки shape/length для них нет.
+Для profile, registration, user search и group requisites route handler
+обращается к Prisma напрямую, минуя service layer. Account activity проходит
+через `activity.service.ts`. Query/path параметры валидируются вручную лишь
+частично; единой проверки shape/length для них нет.
 
 ## Карта исходного кода
 
@@ -66,7 +73,7 @@ React page/component
 | HTTP-контракт | `contracts/openapi`, `contracts/typescript` | Canonical OpenAPI, generated transport types и язык-независимые test protocols |
 | Общие UI-типы | `src/types` | Типы web-приложения; Prisma-типы в public type surface не используются |
 | Модель БД | `prisma/schema.prisma` | Сущности, отношения, индексы и referential actions |
-| Эволюция БД | `prisma/migrations` | Последовательность SQL-миграций и backfill статистики |
+| Baseline БД | `prisma/migrations` | Единственная fresh-install migration без legacy upgrade/backfill |
 | Развёртывание | `Dockerfile`, `docker-entrypoint.sh` | Standalone image, применение миграций, запуск Next.js |
 
 ## Доминирующие принципы и исключения
@@ -76,7 +83,8 @@ React page/component
 - Основная core-логика располагается в `src/services`, но несколько простых routes выполняют persistence напрямую.
 - Членство и роль проверяются сервером, а для критических мутаций повторно проверяются внутри транзакции.
 - Там, где use case создаёт activity и/или lifetime facts, эти записи выполняются в той же транзакции; покрытие событий не является полным.
-- Балансы вычисляются из расходов и расчётов, а не хранятся отдельным изменяемым агрегатом.
+- Source ledger состоит из расходов/splits/settlements, а текущие balances
+  обслуживаются транзакционной, полностью rebuildable проекцией positions.
 - Полученные достижения и lifetime-факты сохраняются независимо от удаляемых групп и расходов.
 - Feature pages/components не импортируют domain API clients и не создают TanStack
   queries/mutations напрямую. `src/hooks/api` является единственной прикладной границей
@@ -84,11 +92,11 @@ React page/component
 
 ## Статус проверки
 
-- На 13 сентября 2026 года working tree основан на baseline `a93c9fc`; `npx tsc --noEmit` проходит без ошибок.
-- Обычный `npm test`: 858 тестов проходят, 132 DB-зависимых сценария пропускаются по feature flag.
-- Оптимизированный Next.js build через `npm run build` проходит; это режим
-  сборки, а не проверка production-окружения.
-- Полный `npm run test:coverage` на защищённом `TEST_DATABASE_URL`: 990 тестов проходят; guard запрещает application DB и имя без маркера `test`.
-- Оба локальных E2E-режима проходят `225/225`: через `next dev` и через
-  `.next/standalone/server.js`. Оба используют только сбрасываемую Docker-БД
-  `splitwise_e2e`; внешний трафик и production-БД не задействованы.
+- Единственная baseline migration рассчитана на чистую БД; upgrade/backfill
+  предыдущих схем не поддерживается.
+- `npm run test:regression` объединяет typecheck, contract, golden, unit/DB,
+  build и standalone E2E gates.
+- DB runners принимают только изолированные URL с test/e2e-маркером и не должны
+  подключаться к application или production БД.
+- Актуальные результаты и coverage thresholds принадлежат CI/configuration, а
+  не этому документу.

@@ -33,6 +33,7 @@ export type AchievementMetrics = {
   homeGroups: number
   tripGroups: number
   coupleGroups: number
+  otherGroups: number
   maxGroupMembers: number
   maxGroupExpenses: number
 }

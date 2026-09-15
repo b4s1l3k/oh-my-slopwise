@@ -21,7 +21,7 @@ function expenseSource() {
     title: "Dinner",
     amount: 10_001,
     currency: "USD",
-    amountBase: 900_090 as number | null,
+    amountBase: 900_090,
     customRate: 90 as number | null,
     category: "Food",
     splitType: "PERCENTAGE" as const,
@@ -36,8 +36,7 @@ function expenseSource() {
       expenseId: "expense",
       userId: "bob",
       amount: 3_334,
-      amountBase: 300_060 as number | null,
-      share: null,
+      amountBase: 300_060,
       percentage: 3_333,
       user: { ...bob, email: "must-not-leak@example.com" },
       persistenceOnly: true,
@@ -46,7 +45,7 @@ function expenseSource() {
       id: "cash",
       amount: 100,
       currency: "USD",
-      amountBase: 9_000 as number | null,
+      amountBase: 9_000,
       fromUser: { id: "bob", name: "Bob", avatarUrl: bob.avatarUrl },
       persistenceOnly: true,
     }],
@@ -57,13 +56,13 @@ function expenseSource() {
 function settlementSource() {
   return {
     id: "settlement",
-    groupId: null,
+    groupId: "group",
     expenseId: "expense",
     fromUserId: "bob",
     toUserId: "alice",
     amount: 1,
     currency: "JPY",
-    amountBase: null,
+    amountBase: 90,
     date: "2026-09-13T13:00:00+03:00",
     notes: null,
     createdAt: instant,
@@ -100,7 +99,6 @@ describe("financial response mapper compatibility", () => {
           userId: "bob",
           amount: 3_334,
           amountBase: 300_060,
-          share: null,
           percentage: 3_333,
           user: bob,
         }],
@@ -116,36 +114,31 @@ describe("financial response mapper compatibility", () => {
   })
 
   it("maps expense pages without sharing mutable arrays", () => {
-    const source = { expenses: [expenseSource()], total: 21, hasNext: true }
+    const source = { expenses: [expenseSource()], nextCursor: "opaque-cursor" }
     const result = toExpensePageResponse(source)
 
     expect(result).toEqual({
       expenses: [toExpenseResponse(source.expenses[0]).expense],
-      total: 21,
-      hasNext: true,
+      nextCursor: "opaque-cursor",
     })
     expect(result.expenses).not.toBe(source.expenses)
     expect(result.expenses[0].splits).not.toBe(source.expenses[0].splits)
     expect(result.expenses[0].settlements).not.toBe(source.expenses[0].settlements)
   })
 
-  it("preserves null FX projections and empty expense collections", () => {
+  it("preserves nullable custom rates and empty expense collections", () => {
     const source = expenseSource()
-    source.amountBase = null
     source.customRate = null
-    source.splits[0].amountBase = null
-    source.settlements[0].amountBase = null
 
     expect(toExpenseResponse(source).expense).toMatchObject({
-      amountBase: null,
+      amountBase: 900_090,
       customRate: null,
-      splits: [{ amountBase: null }],
-      settlements: [{ amountBase: null }],
+      splits: [{ amountBase: 300_060 }],
+      settlements: [{ amountBase: 9_000 }],
     })
-    expect(toExpensePageResponse({ expenses: [], total: 0, hasNext: false })).toEqual({
+    expect(toExpensePageResponse({ expenses: [], nextCursor: null })).toEqual({
       expenses: [],
-      total: 0,
-      hasNext: false,
+      nextCursor: null,
     })
   })
 
@@ -207,13 +200,13 @@ describe("financial response mapper compatibility", () => {
     const source = settlementSource()
     const expected = {
       id: "settlement",
-      groupId: null,
+      groupId: "group",
       expenseId: "expense",
       fromUserId: "bob",
       toUserId: "alice",
       amount: 1,
       currency: "JPY",
-      amountBase: null,
+      amountBase: 90,
       date: "2026-09-13T10:00:00.000Z",
       notes: null,
       createdAt: "2026-09-13T10:00:00.123Z",
@@ -222,7 +215,13 @@ describe("financial response mapper compatibility", () => {
     }
 
     expect(toSettlementResponse(source)).toEqual({ settlement: expected })
-    expect(toSettlementListResponse([source])).toEqual({ settlements: [expected] })
-    expect(toSettlementListResponse([])).toEqual({ settlements: [] })
+    expect(toSettlementListResponse({ settlements: [source], nextCursor: "opaque" })).toEqual({
+      settlements: [expected],
+      nextCursor: "opaque",
+    })
+    expect(toSettlementListResponse({ settlements: [], nextCursor: null })).toEqual({
+      settlements: [],
+      nextCursor: null,
+    })
   })
 })

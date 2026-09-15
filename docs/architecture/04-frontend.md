@@ -14,7 +14,8 @@ Frontend построен на Next.js 15 App Router и React 19. Приклад
 - Zod — shared validation schemas;
 - Lucide — иконки.
 
-Zustand находится в dependencies, но текущий UI его не использует. Глобального client store нет; локальное состояние хранится в `useState`, производное — в `useMemo`.
+Глобального client store нет; локальное состояние хранится в `useState`,
+производное — в `useMemo`.
 
 ## Дерево композиции
 
@@ -147,13 +148,11 @@ contract и полный candidate E2E gate.
 | Query key | Источник | Основной потребитель |
 |---|---|---|
 | `['overview']` | `GET /balances/overview` | Dashboard |
-| `['groups']` | `GET /groups` | Dashboard и список групп |
+| `['groups']` | `GET /groups?cursor=` | Cursor infinite query для dashboard и списка групп |
 | `['group', groupId]` | `GET /groups/:id` | Group workspace/settings |
-| `['expenses', groupId]` | `GET /groups/:id/expenses?page=N` | Infinite query расходов |
-| `['expenses', groupId, 'detail', expenseId]` | `GET /expenses/:id` | Query hook существует; текущий экран использует строку из списка |
+| `['expenses', groupId]` | `GET /groups/:id/expenses?cursor=` | Infinite query расходов |
 | `['balances', groupId]` | `GET /groups/:id/balances` | Workspace группы |
-| `['settlements', groupId]` | `GET /groups/:id/settlements` | Query hook существует; отдельного экрана истории пока нет |
-| `['activity']` | `GET /groups`, затем fan-out по `/groups/:id/activity` | Общая лента активности |
+| `['activity']` | `GET /activity?cursor=` | Единая cursor-лента активности без `1+N` |
 | `['profile']` | `GET /users/me` | Профиль |
 | `['statistics']` | `GET /users/me/statistics` | Статистика профиля |
 | `['achievements']` | `GET /users/me/achievements` | Достижения |
@@ -161,7 +160,13 @@ contract и полный candidate E2E gate.
 | `['invite', token]` | `GET /invites/:token` | Страница приглашения |
 | `['admin', 'feedback']` | `GET /admin/feedback` | Admin page |
 
-Expense list использует page-based `useInfiniteQuery`. Сервер возвращает по 30 строк, а UI загружает следующую страницу по кнопке. Фильтрация расходов по участнику, remembered manual rate и recent currencies вычисляются только по уже загруженным страницам.
+Group list и expense list используют cursor-based `useInfiniteQuery` со
+страницей 30, account activity и settlements — со страницей 50. Сервер
+возвращает opaque `nextCursor`; dashboard, `/groups` и `/activity` сохраняют уже
+загруженные элементы при ошибке continuation и повторяют следующую страницу по
+кнопке. Фильтрация расходов по
+участнику, remembered manual rate и recent currencies вычисляются только по уже
+загруженным страницам.
 
 ## Мутации и инвалидация
 
@@ -174,12 +179,12 @@ navigation. Совпавшие active queries TanStack Query перечитыв�
 |---|---|
 | Создание группы | groups, overview, activity, achievements, statistics |
 | Rename/requisites/member add/remove | groups, group detail, activity, group balances, overview, achievements, statistics |
-| Выход из группы | Предыдущий набор; group detail, group expense list, group balances и group settlements удаляются из cache |
-| Удаление группы | предыдущий набор; group detail, group expense list, group balances и group settlements удаляются из cache |
+| Выход из группы | Предыдущий набор; group detail, group expense list и group balances удаляются из cache |
+| Удаление группы | предыдущий набор; group detail, group expense list и group balances удаляются из cache |
 | Создание расхода | groups, group detail, expenses, group balances, overview, activity, achievements, statistics |
 | Изменение расхода | набор создания плюс expense detail |
 | Удаление расхода | набор создания; expense detail удаляется из cache |
-| Создание/сброс расчётов | groups, group detail, group balances, overview, group settlements, activity, achievements, statistics |
+| Создание/сброс расчётов | groups, group detail, group balances, overview, activity, achievements, statistics |
 | Создание invite | achievements, statistics |
 | Отзыв invite | Все cached invite keys по prefix `invite` |
 | Принятие invite | group-набор и текущий invite token |
@@ -277,7 +282,9 @@ Workspace показывает упрощённые долги. Кнопка о�
 
 ### Профиль и история
 
-Профиль объединяет lifetime statistics, список достижений, имя и реквизиты. Activity page сначала получает группы, затем параллельно загружает журнал каждой группы и объединяет его на клиенте.
+Профиль объединяет lifetime statistics, список достижений, имя и реквизиты.
+Activity page получает единую cursor-ленту через `/api/v1/activity`, а на клиенте
+только группирует уже загруженные события для отображения.
 
 ## Responsive и accessibility
 
@@ -299,10 +306,11 @@ query-экраны используют общий `QueryErrorState` с retry. �
 фиксируют recovery для dashboard, groups, group detail/settings, profile,
 statistics/achievements, feedback и пагинации.
 
-Остаются два системных пробела:
+Activity получает единую серверную страницу, группирует уже загруженные записи для UI
+и явно показывает continuation/error следующей страницы.
 
-- activity агрегирует запросы нескольких групп и подавляет ошибку отдельной
-  группы, поэтому лента может быть неполной без явного предупреждения;
+Остаётся системный пробел:
+
 - общей реакции на `401` после истечения client session нет: каждый query или
   mutation получает обычный `ApiError`, но единый re-auth/logout flow не
   запускается.

@@ -5,9 +5,7 @@ import { cn } from "@/lib/utils"
 import type React from "react"
 
 export const Dialog = DialogPrimitive.Root
-export const DialogTrigger = DialogPrimitive.Trigger
-export const DialogPortal = DialogPrimitive.Portal
-export const DialogClose = DialogPrimitive.Close
+const DialogPortal = DialogPrimitive.Portal
 
 export function DialogOverlay({
   className,
@@ -52,15 +50,6 @@ export function DialogContent({
 export function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)} {...props} />
-  )
-}
-
-export function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
-      {...props}
-    />
   )
 }
 

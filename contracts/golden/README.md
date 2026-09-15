@@ -1,6 +1,6 @@
 # Language-neutral golden compatibility contract
 
-The 186 JSON vectors in 13 focused suites in this directory make legacy and candidate backend behavior
+The 196 JSON vectors in 14 focused suites in this directory make legacy and candidate backend behavior
 comparable during migration. They are intentionally independent of TypeScript,
 Vitest, Prisma and HTTP transport. Most cases have one common expectation. An
 ADR-approved correction may use `expectedByAdapter` so a candidate is not

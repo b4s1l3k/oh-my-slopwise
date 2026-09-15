@@ -9,15 +9,12 @@ function pathSegment(value: string): string {
 }
 
 export const expensesApi = {
-  getExpense: (expenseId: string, options?: ApiCallOptions) =>
-    apiRequest<ApiOperationResponse<"getExpenseV1", 200>>(
-      `/expenses/${pathSegment(expenseId)}`,
-      options
-    ),
-  getGroupExpenses: (groupId: string, page: number, options?: ApiCallOptions) => {
-    const search = new URLSearchParams({ page: String(page) })
+  getGroupExpenses: (groupId: string, cursor?: string | null, options?: ApiCallOptions) => {
+    const search = new URLSearchParams()
+    if (cursor != null) search.set("cursor", cursor)
+    const query = search.size > 0 ? `?${search}` : ""
     return apiRequest<ApiOperationResponse<"listGroupExpensesV1", 200>>(
-      `/groups/${pathSegment(groupId)}/expenses?${search}`,
+      `/groups/${pathSegment(groupId)}/expenses${query}`,
       options
     )
   },

@@ -17,14 +17,10 @@ export async function GET(req: Request, { params }: Params) {
 
   const { id: groupId } = await params
   const url = new URL(req.url)
-  const page = Number(url.searchParams.get("page") ?? 1)
-  // Верхняя граница защищает от гигантского OFFSET (page=9e15 и т.п.)
-  if (!Number.isSafeInteger(page) || page < 1 || page > 100_000) {
-    return NextResponse.json({ error: "Invalid page" }, { status: 400 })
-  }
+  const cursor = url.searchParams.get("cursor")
 
   try {
-    const result = await expensesService.getGroupExpenses(groupId, session.user.id, page)
+    const result = await expensesService.getGroupExpenses(groupId, session.user.id, cursor)
     return NextResponse.json(toExpensePageResponse(result))
   } catch (e) {
     return handleServiceError(e)

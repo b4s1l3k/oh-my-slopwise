@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryErrorState } from "@/components/ui/query-error-state"
-import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/components/ui/toast"
 import { ArrowLeft, Plus, Trash2, ArrowRight, CheckCircle, Settings, Pencil, RefreshCw, Loader2, ChevronDown, ChevronUp } from "lucide-react"
@@ -130,7 +129,6 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   const group = groupData
   const expenses: ExpenseViewModel[] =
     expensesData?.pages.flatMap((page) => page.expenses) ?? []
-  const expensesTotal: number = expensesData?.pages[0]?.total ?? expenses.length
   const debts: SimplifiedDebtViewModel[] = balancesData?.simplified ?? []
   const myUserId = session?.user?.id
   const iAmAdmin = group?.members?.some(
@@ -197,8 +195,6 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
       />
     )
   }
-
-  const myDebts = debts.filter((d) => d.fromUserId === myUserId || d.toUserId === myUserId)
 
   return (
     <div className="space-y-6">
@@ -351,7 +347,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
           Расходы ({selectedMemberId
             ? `${filteredExpenses.length} из ${expenses.length} загруженных`
             : hasNextPage
-              ? `${expenses.length} из ${expensesTotal}`
+              ? `${expenses.length} загружено`
               : expenses.length})
         </h2>
         {loadingExpenses ? (
@@ -418,11 +414,6 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                         {myPosition?.kind === "SETTLED" && (
                           <p className="text-xs mt-1 font-medium text-green-600">
                             Вы рассчитались наличными: {formatMoney(myPosition.cashPaid, expense.currency)}
-                          </p>
-                        )}
-                        {myPosition?.kind === "CASH_PAID" && (
-                          <p className="text-xs mt-1 font-medium text-green-600">
-                            Вы отдали наличными {formatMoney(myPosition.cashPaid, expense.currency)}
                           </p>
                         )}
                       </div>
@@ -569,7 +560,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                   {isFetchingNextPage ? "Загружаем…" : "Показать ещё"}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Загружено {expenses.length} из {expensesTotal}
+                  Загружено {expenses.length}
                 </p>
                 {isFetchNextPageError && (
                   <p className="text-xs text-destructive">

@@ -42,6 +42,7 @@ const maxMetrics: AchievementMetrics = {
   homeGroups: 1_000_000,
   tripGroups: 1_000_000,
   coupleGroups: 1_000_000,
+  otherGroups: 1_000_000,
   maxGroupMembers: 1_000_000,
   maxGroupExpenses: 1_000_000,
 }

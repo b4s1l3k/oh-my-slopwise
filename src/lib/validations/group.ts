@@ -1,12 +1,16 @@
 import { z } from "zod"
 import { SUPPORTED_CURRENCIES } from "@/lib/currencies"
+import { MAX_GROUP_MEMBERS } from "@/lib/domain-limits"
 
 export const createGroupSchema = z.object({
   name: z.string().trim().min(1, "Название обязательно").max(100),
   description: z.string().trim().max(500).optional(),
   type: z.enum(["HOME", "TRIP", "COUPLE", "OTHER"]).default("OTHER"),
   currency: z.enum(SUPPORTED_CURRENCIES).default("RUB"),
-  memberIds: z.array(z.string().min(1)).default([]),
+  memberIds: z
+    .array(z.string().min(1))
+    .max(MAX_GROUP_MEMBERS, "В группе может быть не больше 100 участников")
+    .default([]),
 })
 
 export const updateGroupSchema = z.object({

@@ -11,6 +11,11 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock("@/lib/api/client/groups-api", () => ({
   groupsApi: {
     getGroups: apiMocks.getGroups,
+  },
+}))
+
+vi.mock("@/lib/api/client/activity-api", () => ({
+  activityApi: {
     getActivity: apiMocks.getActivity,
   },
 }))
@@ -38,8 +43,9 @@ import {
   invalidateSettlementData,
   invalidateUpdatedExpense,
 } from "@/hooks/api/invalidation"
-import { groupsQueryOptions } from "@/hooks/api/use-groups"
-import { activityQueryOptions } from "@/hooks/api/use-activity"
+import { groupsInfiniteQueryOptions } from "@/hooks/api/use-groups"
+import { accountActivityInfiniteQueryOptions } from "@/hooks/api/use-activity"
+import { groupAccountActivity } from "@/hooks/api/use-activity"
 import { groupExpensesInfiniteQueryOptions } from "@/hooks/api/use-expenses"
 import { userSearchQueryOptions } from "@/hooks/api/use-users"
 
@@ -63,14 +69,22 @@ describe("API hook option factories", () => {
     expect(apiQueryKeys.users.search("alice")).toEqual(["users", "search", "alice"])
   })
 
-  it("forwards React Query AbortSignal through a query option", async () => {
+  it("owns group pagination and forwards the opaque cursor and signal", async () => {
     const controller = new AbortController()
-    apiMocks.getGroups.mockResolvedValue({ groups: [] })
-    const options = groupsQueryOptions()
+    apiMocks.getGroups.mockResolvedValue({ groups: [], nextCursor: "cursor-4" })
+    const options = groupsInfiniteQueryOptions()
 
-    await runQuery(options, controller.signal)
+    await runQuery(options, controller.signal, {
+      pageParam: "cursor-3",
+      direction: "forward",
+    })
 
-    expect(apiMocks.getGroups).toHaveBeenCalledWith({ signal: controller.signal })
+    expect(options.initialPageParam).toBeNull()
+    expect(apiMocks.getGroups).toHaveBeenCalledWith("cursor-3", {
+      signal: controller.signal,
+    })
+    expect(runGetNextPageParam(options, { nextCursor: "cursor-4" }, 4)).toBe("cursor-4")
+    expect(runGetNextPageParam(options, { nextCursor: null }, 4)).toBeUndefined()
   })
 
   it("maps transport groups before storing them in the query cache", async () => {
@@ -87,25 +101,30 @@ describe("API hook option factories", () => {
         members: [],
         _count: { expenses: 4 },
       }],
+      nextCursor: "cursor-2",
     })
 
     const result = await runQuery(
-      groupsQueryOptions(),
-      new AbortController().signal
+      groupsInfiniteQueryOptions(),
+      new AbortController().signal,
+      { pageParam: null, direction: "forward" }
     )
 
-    expect(result).toEqual([{
-      id: "group-1",
-      name: "Trip",
-      description: null,
-      type: "TRIP",
-      currency: "RUB",
-      createdById: "user-1",
-      createdAt: "2026-09-13T10:00:00.000Z",
-      updatedAt: "2026-09-13T10:00:00.000Z",
-      members: [],
-      expenseCount: 4,
-    }])
+    expect(result).toEqual({
+      groups: [{
+        id: "group-1",
+        name: "Trip",
+        description: null,
+        type: "TRIP",
+        currency: "RUB",
+        createdById: "user-1",
+        createdAt: "2026-09-13T10:00:00.000Z",
+        updatedAt: "2026-09-13T10:00:00.000Z",
+        members: [],
+        expenseCount: 4,
+      }],
+      nextCursor: "cursor-2",
+    })
   })
 
   it("normalizes user search and disables short queries", async () => {
@@ -124,83 +143,89 @@ describe("API hook option factories", () => {
     })
   })
 
-  it("owns expense pagination and forwards page and signal", async () => {
+  it("owns expense pagination and forwards the opaque cursor and signal", async () => {
     const controller = new AbortController()
     apiMocks.getGroupExpenses.mockResolvedValue({
       expenses: [],
-      total: 0,
-      hasNext: false,
+      nextCursor: "cursor-4",
     })
     const options = groupExpensesInfiniteQueryOptions("group-1")
 
-    await runQuery(options, controller.signal, { pageParam: 3, direction: "forward" })
+    await runQuery(options, controller.signal, {
+      pageParam: "cursor-3",
+      direction: "forward",
+    })
 
-    expect(options.initialPageParam).toBe(1)
-    expect(apiMocks.getGroupExpenses).toHaveBeenCalledWith("group-1", 3, {
+    expect(options.initialPageParam).toBeNull()
+    expect(apiMocks.getGroupExpenses).toHaveBeenCalledWith("group-1", "cursor-3", {
       signal: controller.signal,
     })
-    expect(runGetNextPageParam(options, { hasNext: true }, 4)).toBe(5)
-    expect(runGetNextPageParam(options, { hasNext: false }, 4)).toBeUndefined()
+    expect(runGetNextPageParam(options, { nextCursor: "cursor-4" }, 4)).toBe("cursor-4")
+    expect(runGetNextPageParam(options, { nextCursor: null }, 4)).toBeUndefined()
   })
 
-  it("keeps activity fallback local while preserving successful groups", async () => {
-    apiMocks.getGroups.mockResolvedValue({
-      groups: [
-        { id: "group-1", name: "One" },
-        { id: "group-2", name: "Two" },
-      ],
+  it("owns account activity pagination without depending on the group list", async () => {
+    const controller = new AbortController()
+    apiMocks.getActivity.mockResolvedValue({ activities: [], nextCursor: "activity-cursor-4" })
+    const options = accountActivityInfiniteQueryOptions()
+
+    await runQuery(options, controller.signal, {
+      pageParam: "activity-cursor-3",
+      direction: "forward",
     })
-    apiMocks.getActivity.mockImplementation((groupId: string) =>
-      groupId === "group-1"
-        ? Promise.resolve({
-            activities: [{
-              id: "activity-1",
-              groupId: "group-1",
-              actorId: "user-1",
-              type: "EXPENSE_CREATED",
-              entityType: "expense",
-              entityId: "expense-1",
-              createdAt: "2026-09-13T10:00:00.000Z",
-              metadata: {},
-              actor: { id: "user-1", name: "Alice" },
-            }],
-          })
-        : Promise.reject(new Error("temporary failure"))
+
+    expect(apiMocks.getActivity).toHaveBeenCalledWith(
+      "activity-cursor-3",
+      undefined,
+      { signal: controller.signal }
     )
+    expect(runGetNextPageParam(options, { nextCursor: "activity-cursor-4" }, 4)).toBe(
+      "activity-cursor-4"
+    )
+    expect(apiMocks.getGroups).not.toHaveBeenCalled()
+  })
 
-    const result = await runQuery(activityQueryOptions(), new AbortController().signal)
+  it("maps and groups account activity in first-seen server order", async () => {
+    apiMocks.getActivity.mockResolvedValue({
+      activities: [
+        accountActivity("activity-3", "group-2", "Second", "2026-09-15T12:00:00.000Z"),
+        accountActivity("activity-2", "group-1", "First", "2026-09-15T11:00:00.000Z"),
+        accountActivity("activity-1", "group-2", "Second", "2026-09-15T10:00:00.000Z"),
+      ],
+      nextCursor: null,
+    })
 
-    expect(result).toEqual([
-      {
-        id: "group-1",
-        name: "One",
-        activities: [{
-          id: "activity-1",
-          groupId: "group-1",
-          actorId: "user-1",
-          type: "EXPENSE_CREATED",
-          entityType: "expense",
-          entityId: "expense-1",
-          createdAt: "2026-09-13T10:00:00.000Z",
-          metadata: {
-            title: undefined,
-            amount: undefined,
-            currency: undefined,
-            toUserName: undefined,
-            cashFromUserName: undefined,
-            memberName: undefined,
-            selfLeft: undefined,
-            viaInvite: undefined,
-            name: undefined,
-            changes: undefined,
-            removed: undefined,
-          },
-          actor: { id: "user-1", name: "Alice" },
-        }],
-      },
+    const page = await runQuery(
+      accountActivityInfiniteQueryOptions(),
+      new AbortController().signal,
+      { pageParam: null, direction: "forward" }
+    ) as { activities: Parameters<typeof groupAccountActivity>[0] }
+
+    expect(groupAccountActivity(page.activities).map((group) => ({
+      id: group.id,
+      name: group.name,
+      activityIds: group.activities.map((activity) => activity.id),
+    }))).toEqual([
+      { id: "group-2", name: "Second", activityIds: ["activity-3", "activity-1"] },
+      { id: "group-1", name: "First", activityIds: ["activity-2"] },
     ])
   })
 })
+
+function accountActivity(id: string, groupId: string, groupName: string, createdAt: string) {
+  return {
+    id,
+    groupId,
+    actorId: "user-1",
+    type: "GROUP_UPDATED" as const,
+    entityType: "group",
+    entityId: groupId,
+    metadata: { name: groupName },
+    createdAt,
+    actor: { id: "user-1", name: "Alice" },
+    group: { id: groupId, name: groupName },
+  }
+}
 
 describe("API hook invalidation", () => {
   it("invalidates all financial projections after an expense change", () => {
@@ -228,7 +253,6 @@ describe("API hook invalidation", () => {
       ["group", "group-1"],
       ["balances", "group-1"],
       ["overview"],
-      ["settlements", "group-1"],
       ["activity"],
       ["achievements"],
       ["statistics"],
@@ -238,7 +262,6 @@ describe("API hook invalidation", () => {
     invalidateProfileData(profile.queryClient)
     expect(invalidatedKeys(profile.invalidateQueries)).toContainEqual(["group"])
     expect(invalidatedKeys(profile.invalidateQueries)).toContainEqual(["expenses"])
-    expect(invalidatedKeys(profile.invalidateQueries)).toContainEqual(["settlements"])
     expect(invalidatedKeys(profile.invalidateQueries)).toContainEqual(["users", "search"])
     expect(invalidatedKeys(profile.invalidateQueries)).toContainEqual(["admin", "feedback"])
   })
@@ -252,7 +275,6 @@ describe("API hook invalidation", () => {
       ["group", "group-1"],
       ["expenses", "group-1"],
       ["balances", "group-1"],
-      ["settlements", "group-1"],
     ])
   })
 
@@ -310,7 +332,7 @@ async function runQuery(
 
 function runGetNextPageParam(
   options: { getNextPageParam?: unknown },
-  lastPage: { hasNext: boolean },
+  lastPage: { nextCursor: string | null },
   pageCount: number
 ): unknown {
   if (typeof options.getNextPageParam !== "function") {
@@ -320,7 +342,7 @@ function runGetNextPageParam(
     lastPage,
     Array.from({ length: pageCount }, () => lastPage),
     pageCount,
-    Array.from({ length: pageCount }, (_, index) => index + 1)
+    Array.from({ length: pageCount }, (_, index) => `cursor-${index + 1}`)
   )
 }
 

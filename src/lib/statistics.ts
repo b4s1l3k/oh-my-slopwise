@@ -85,10 +85,7 @@ export function buildProfileStatistics(
       home: metrics.homeGroups,
       trip: metrics.tripGroups,
       couple: metrics.coupleGroups,
-      other: Math.max(
-        0,
-        metrics.activeGroups - metrics.homeGroups - metrics.tripGroups - metrics.coupleGroups
-      ),
+      other: metrics.otherGroups,
     },
     mastery: {
       currenciesUsed: metrics.currenciesUsed,

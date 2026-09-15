@@ -9,8 +9,15 @@ function pathSegment(value: string): string {
 }
 
 export const groupsApi = {
-  getGroups: (options?: ApiCallOptions) =>
-    apiRequest<ApiOperationResponse<"listGroupsV1", 200>>("/groups", options),
+  getGroups: (cursor?: string | null, options?: ApiCallOptions) => {
+    const search = new URLSearchParams()
+    if (cursor != null) search.set("cursor", cursor)
+    const query = search.size > 0 ? `?${search}` : ""
+    return apiRequest<ApiOperationResponse<"listGroupsV1", 200>>(
+      `/groups${query}`,
+      options
+    )
+  },
   getGroup: (groupId: string, options?: ApiCallOptions) =>
     apiRequest<ApiOperationResponse<"getGroupV1", 200>>(
       `/groups/${pathSegment(groupId)}`,
@@ -44,11 +51,6 @@ export const groupsApi = {
         ...options,
         method: "DELETE",
       }
-    ),
-  getActivity: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<ApiOperationResponse<"listGroupActivityV1", 200>>(
-      `/groups/${pathSegment(groupId)}/activity`,
-      options
     ),
   updateRequisites: (
     groupId: string,

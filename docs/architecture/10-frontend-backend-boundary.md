@@ -83,7 +83,7 @@ npm run test:migration:candidate
 ```
 
 Она последовательно проверяет codegen/OpenAPI, typecheck web, все быстрые тесты,
-оптимизированный web build, все golden-векторы в compare-режиме и 225
+оптимизированный web build, все golden-векторы в compare-режиме и полный
 browser/HTTP E2E. Candidate E2E должен указывать только на специально поднятый
 тестовый stack и его сбрасываемое test storage, а не на production deployment.
 Остановить или пропустить отдельный неуспешный этап нельзя.

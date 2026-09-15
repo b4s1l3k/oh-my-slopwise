@@ -1,2 +1,0 @@
--- AlterEnum
-ALTER TYPE "ActivityType" ADD VALUE 'SETTLEMENTS_RESET';

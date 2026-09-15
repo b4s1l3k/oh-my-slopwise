@@ -5,7 +5,7 @@ import { toActivityListResponse } from "@/lib/api/v1/response-mappers"
 
 type Params = { params: Promise<{ id: string }> }
 
-export async function GET(req: Request, { params }: Params) {
+export async function GET(_req: Request, { params }: Params) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
@@ -18,7 +18,7 @@ export async function GET(req: Request, { params }: Params) {
   const activities = await prisma.activityLog.findMany({
     where: { groupId },
     include: { actor: { select: { id: true, name: true } } },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 50,
   })
 

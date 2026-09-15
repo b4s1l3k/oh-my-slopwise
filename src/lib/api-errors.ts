@@ -27,6 +27,10 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
     status: 409,
     message: "Пользователь уже состоит в группе",
   },
+  GROUP_MEMBER_LIMIT: {
+    status: 409,
+    message: "В группе уже максимальное число участников",
+  },
   ADMIN_CANNOT_LEAVE: {
     status: 409,
     message: "Администратор не может выйти из группы — удалите группу после завершения расчётов",
@@ -47,6 +51,8 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
     status: 422,
     message: "Сумма после пересчёта меньше минимальной единицы валюты группы",
   },
+  INVALID_CURSOR: { status: 400, message: "Некорректный курсор пагинации" },
+  INVALID_PAGE_SIZE: { status: 400, message: "Некорректный размер страницы" },
   TRANSACTION_CONFLICT: {
     status: 409,
     message: "Данные изменились одновременно — повторите действие",

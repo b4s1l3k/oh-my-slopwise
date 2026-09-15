@@ -174,7 +174,7 @@ function isDomainApiClientModule(sourcePath: string, importedModule: string): bo
   )
 }
 
-function isTransportDtoModule(sourcePath: string, importedModule: string): boolean {
+function isTransportDtoModule(importedModule: string): boolean {
   return importedModule === transportContractModule ||
     importedModule.startsWith("@contract/")
 }
@@ -316,7 +316,7 @@ function inspectSource(path: string): Violation[] {
       ) {
         report(node, "pages and components must use src/hooks/api instead of React Query directly")
       }
-      if ((isUiModule || isFeatureHook) && isTransportDtoModule(path, importedModule)) {
+      if ((isUiModule || isFeatureHook) && isTransportDtoModule(importedModule)) {
         report(node, "UI and feature hooks must use view models instead of transport DTOs")
       }
       if (

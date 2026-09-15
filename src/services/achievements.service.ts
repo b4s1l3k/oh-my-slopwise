@@ -1,10 +1,6 @@
 import { evaluateAchievements, type Achievement } from "@/lib/achievements"
 import { prisma } from "@/lib/db"
-import {
-  getCurrentUserStatistics,
-  getHistoricalUserStatistics,
-  mergeHistoricalAndCurrentStatistics,
-} from "@/services/statistics.service"
+import { getHistoricalUserStatistics } from "@/services/statistics.service"
 
 // Всплывающее уведомление об одной полученной ачивке.
 export type AchievementUnlockNotification = {
@@ -18,18 +14,21 @@ async function evaluateUserAchievements(
   userId: string,
   now: Date
 ): Promise<{ current: Achievement[]; persistedIds: Set<string> }> {
-  const [currentMetrics, historicalMetrics, persisted] = await Promise.all([
-    getCurrentUserStatistics(userId, now),
-    getHistoricalUserStatistics(userId, now),
-    prisma.userAchievement.findMany({
-      where: { userId },
-      select: { achievementId: true },
-    }),
-  ])
+  return prisma.$transaction(async (tx) => {
+    const [historicalMetrics, persisted] = await Promise.all([
+      getHistoricalUserStatistics(userId, now, tx),
+      tx.userAchievement.findMany({
+        where: { userId },
+        select: { achievementId: true },
+      }),
+    ])
 
-  const metrics = mergeHistoricalAndCurrentStatistics(historicalMetrics, currentMetrics)
-  const persistedIds = new Set(persisted.map((item) => item.achievementId))
-  return { current: evaluateAchievements(metrics, persistedIds), persistedIds }
+    const persistedIds = new Set(persisted.map((item) => item.achievementId))
+    return {
+      current: evaluateAchievements(historicalMetrics, persistedIds),
+      persistedIds,
+    }
+  }, { isolationLevel: "RepeatableRead" })
 }
 
 /**

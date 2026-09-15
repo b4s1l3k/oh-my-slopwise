@@ -37,7 +37,6 @@ jobs:
       DATABASE_URL: postgresql://splitwise:splitwise@127.0.0.1:5432/splitwise_app
       TEST_DATABASE_URL: postgresql://splitwise:splitwise@127.0.0.1:5432/splitwise_test
       E2E_DATABASE_URL: postgresql://splitwise:splitwise@127.0.0.1:5432/splitwise_e2e
-      NEXTAUTH_SECRET: splitwise-ci-regression-secret
       AUTH_SECRET: splitwise-ci-regression-secret
     permissions:
       contents: read

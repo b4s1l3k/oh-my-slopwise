@@ -28,11 +28,6 @@ export const settlementsApi = {
       `/groups/${pathSegment(groupId)}/balances`,
       options
     ),
-  getGroupSettlements: (groupId: string, options?: ApiCallOptions) =>
-    apiRequest<ApiOperationResponse<"listGroupSettlementsV1", 200>>(
-      `/groups/${pathSegment(groupId)}/settlements`,
-      options
-    ),
   resetGroupSettlements: (groupId: string, options?: ApiCallOptions) =>
     apiRequest<ApiOperationResponse<"resetGroupSettlementsV1", 200>>(
       `/groups/${pathSegment(groupId)}/settlements`,
